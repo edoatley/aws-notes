@@ -33,7 +33,7 @@ jobs:
           aws-region: ${{vars.AWS_REGION}}
 
       - name: CloudFormation Create Stack
-        if: ${{github.event.inputs.cloudformation_action}} == "create"
+        if: github.event.inputs.cloudformation_action == 'create'
         run: |
           echo "Create == ${{github.event.inputs.cloudformation_action}}"
           aws cloudformation create-stack \
@@ -43,7 +43,7 @@ jobs:
             --region ${{vars.AWS_REGION}}
 
       - name: CloudFormation Delete Stack
-        if: ${{github.event.inputs.cloudformation_action}} == "delete"
+        if: github.event.inputs.cloudformation_action == 'delete'
         run: |
           echo "Delete == ${{github.event.inputs.cloudformation_action}}"
           aws cloudformation delete-stack \
