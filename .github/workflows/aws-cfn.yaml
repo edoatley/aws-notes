@@ -35,6 +35,7 @@ jobs:
       - name: CloudFormation Create Stack
         if: ${{github.event.inputs.cloudformation_action}} == "create"
         run: |
+          echo "Create == ${{github.event.inputs.cloudformation_action}}"
           aws cloudformation create-stack \
             --stack-name ${{github.event.inputs.cloudformation_stack_name}} \
             --template-body file://${{github.event.inputs.cloudformation_template_folder}}/${{github.event.inputs.cloudformation_stack_name}}-cfn.yaml \
@@ -44,6 +45,7 @@ jobs:
       - name: CloudFormation Delete Stack
         if: ${{github.event.inputs.cloudformation_action}} == "delete"
         run: |
+          echo "Delete == ${{github.event.inputs.cloudformation_action}}"
           aws cloudformation delete-stack \
             --stack-name ${{github.event.inputs.cloudformation_stack_name}} \
             --region ${{vars.AWS_REGION}}
