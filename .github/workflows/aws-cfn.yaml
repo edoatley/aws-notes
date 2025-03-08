@@ -30,20 +30,27 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{secrets.AWS_ROLE_ARN}}
-          aws-region: us-east-1
+          aws-region: ${{vars.AWS_REGION}}
+          role-duration-seconds: 300
 
-      - name: Verify AWS authentication
-        run: aws sts get-caller-identity
-
-      - name: Perform CloudFormation Create Stack
+      - name: CloudFormation Create Stack
         if: ${{github.event.inputs.cloudformation_action}} == "create"
         run: |
           aws cloudformation create-stack \
             --stack-name ${{github.event.inputs.cloudformation_stack_name}} \
             --template-body file://${{github.event.inputs.cloudformation_template_folder}}/${{github.event.inputs.cloudformation_stack_name}}-cfn.yaml \
-            --capabilities CAPABILITY_NAMED_IAM
+            --capabilities CAPABILITY_NAMED_IAM \
+            --region ${{vars.AWS_REGION}}
 
-      - name: Perform CloudFormation Delete Stack
+      - name: CloudFormation Delete Stack
         if: ${{github.event.inputs.cloudformation_action}} == "delete"
         run: |
-          aws cloudformation delete-stack --stack-name ${{github.event.inputs.cloudformation_stack_name}}
+          aws cloudformation delete-stack \
+            --stack-name ${{github.event.inputs.cloudformation_stack_name}} \
+            --region ${{vars.AWS_REGION}}
+
+      - name: CloudFormation Describe Stack
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name ${{github.event.inputs.cloudformation_stack_name}} \
+            --region ${{vars.AWS_REGION}}
