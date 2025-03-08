@@ -18,13 +18,16 @@ on:
 
 jobs:
   aws-auth:
+    permissions:
+      id-token: write # to request tokens for AWS CLI
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{secrets.AWS_ROLE_ARN}}
           aws-region: us-east-1
