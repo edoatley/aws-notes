@@ -1,4 +1,4 @@
-name: AWS Authentication
+name: AWS CloudFormation
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ on:
         default: 'create'
 
 jobs:
-  aws-auth:
+  aws-cfn:
     permissions:
       id-token: write # to request tokens for AWS CLI
       contents: read
@@ -31,7 +31,6 @@ jobs:
         with:
           role-to-assume: ${{secrets.AWS_ROLE_ARN}}
           aws-region: ${{vars.AWS_REGION}}
-          role-duration-seconds: 300
 
       - name: CloudFormation Create Stack
         if: ${{github.event.inputs.cloudformation_action}} == "create"
