@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Basic VPC with a single subnet
+
+Parameters:
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR block for the VPC
+  SubnetCidr:
+    Type: String
+    Default: 10.0.1.0/24
+    Description: CIDR block for the subnet
+  EnvironmentName:
+    Type: String
+    Default: dev
+    Description: An environment name that will be prefixed to resource names
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc'
+
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCidr
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-subnet'
+
+Outputs:
+  VpcId:
+    Description: The VPC ID
+    Value: !Ref VPC
+  SubnetId:
+    Description: The Subnet ID
+    Value: !Ref Subnet
