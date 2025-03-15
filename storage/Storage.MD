@@ -1,5 +1,19 @@
 # Storage
 
+## References
+
+- [Performance Efficiency Pillar - AWS Well-Architected Framework](https://docs.aws.amazon.com/wellarchitected/latest/performance-efficiency-pillar/welcome.html)
+- [Best Practices Design Patterns: Optimizing Amazon S3 Performance](https://docs.aws.amazon.com/whitepapers/latest/s3-optimizing-performance-best-practices/introduction.html)
+- [AWS re:Invent 2017: Deep Dive: Using Hybrid Storage with AWS Storage Gateway to Solv (STG309)](https://www.youtube.com/watch?v=9wgaV70FeaM)
+- [AWS re:Invent 2017: ElastiCache Deep Dive: Best Practices and Usage Patterns (DAT305)](https://www.youtube.com/watch?v=_YYBdsuUq2M)
+- [AWS re:Invent 2017: Deep Dive on Amazon Relational Database Service (RDS) (DAT302)](https://www.youtube.com/watch?v=TJxC-B9Q9tQ)
+- [AWS re:Invent 2017: Deep Dive on Amazon S3 & Amazon Glacier Storage Management with (STG311)](https://www.youtube.com/watch?v=SUWqDOnXeDw)
+- [Amazon ElastiCache overview](https://docs.aws.amazon.com/whitepapers/latest/scale-performance-elasticache/amazon-elasticache-overview.html)
+- [SaaS Storage Strategies](https://docs.aws.amazon.com/whitepapers/latest/multi-tenant-saas-storage-strategies/multi-tenant-saas-storage-strategies.html)
+- [AWS Storage Services Overview](https://docs.aws.amazon.com/pdfs/whitepapers/latest/aws-storage-services-overview/aws-storage-services-overview.pdf)
+- [Using Global Secondary Indexes in DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.html)
+- [Announcing Amazon OpenSearch Service which Supports OpenSearch 1.0](https://aws.amazon.com/blogs/aws/announcing-amazon-opensearch-service-which-supports-opensearch-10/)
+
 ## Concepts
 
 Storage Types:
@@ -76,3 +90,27 @@ BASE has come into favour where very high volumes and need for more scale
   - Static web hosting feature
   - BitTorrent - S3 supports the BitTorrent protocol, and it actually has a special URL that you can generate a .torrent file to distribute to other users or other people who want to download your content. And then they can use their BitTorrent client to start downloading that content, then ultimately, the content gets distributed across the Torrent network and then you're not serving up so much data straight from S3, but you're leveraging the peer‑to‑peer distribution network.
 
+## Managing permissions in S3
+
+- Bucket policies - defined at the bucket resource and give a particular principal access to some or all objects in a bucket. Can explicitly allow or explicitly deny access, and this will take precedence over any other permissions granted.
+- IAM - granting temporary permissions in the form of a role to a given user, service, or application. If you can assume the role, you can access the bucket.
+- Evaluating permissions:
+  - If that user is denied access explicitly in the bucket policy, they will not be able to get objects from the bucket. 
+  - If they're explicitly allowed to access objects in the bucket by the bucket policy, then regardless of any roles or permissions that IAM user has been granted, as a principal listed on that resource‑based policy, they'll be able to access objects in the bucket.
+  - If bucket policy does not explicitly allow/deny then identity (IAM) policies are evaluated
+- Using trust policies and IAM roles you can share access across AWS accounts - considered more secure than bucket policies as IAM creds frequently rotate
+- Connecting to resources
+  - via public endpoint (EC2 -> IGW -> S3 (public EP))
+  - via ENI i.e. S3 gateway endpoint (stay on AWS internal network) - reduced storage costs
+
+## Glacier
+
+- S3 archiving solution (cold storage)
+- cheap, slow to respond, should be infrequently accessed
+- used by AWS Storage Gateway Virtual Tape Library
+- integrated with AWS S3 via lifecycle management 
+- Offers faster retrieval speeds if you pay more - still not that fast (minutes)
+- Glacier vault is immutable (delete only)
+![Glacier Summary](../images/Glacier-Summary.png)
+- Glacier Vault Lock is immutable and that means it can't change. It can be overwritten, it can be deleted, but it can't be changed 
+- Glacier vault locks - create then up to 24 hours to abort or complete.  will auto abort if you do not confirm but once there it cannot be removed
