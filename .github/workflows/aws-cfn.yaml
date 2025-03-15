@@ -12,9 +12,9 @@ on:
         required: true
         default: 'simple-vpc'
       cloudformation_action:
-        description: 'CloudFormation action to perform'
+        description: 'CloudFormation action to perform (apply or delete)'
         required: true
-        default: 'create'
+        default: 'apply'
 
 jobs:
   aws-cfn:
@@ -32,15 +32,31 @@ jobs:
           role-to-assume: ${{secrets.AWS_ROLE_ARN}}
           aws-region: ${{vars.AWS_REGION}}
 
-      - name: CloudFormation Create Stack
-        if: github.event.inputs.cloudformation_action == 'create'
+      - name: "DEBUG: print workflow inputs"
         run: |
-          echo "Create == ${{github.event.inputs.cloudformation_action}}"
-          aws cloudformation create-stack \
-            --stack-name ${{github.event.inputs.cloudformation_stack_name}} \
-            --template-body file://resources/${{github.event.inputs.cloudformation_template_folder}}/${{github.event.inputs.cloudformation_stack_name}}-cfn.yaml \
-            --capabilities CAPABILITY_NAMED_IAM \
-            --region ${{vars.AWS_REGION}}
+          echo "cloudformation_template_folder == ${{github.event.inputs.cloudformation_template_folder}}"
+          echo "cloudformation_stack_name == ${{github.event.inputs.cloudformation_stack_name}}"
+          echo "cloudformation_action == ${{github.event.inputs.cloudformation_action}}"    
+
+      - name: CloudFormation Create or Update Stack
+        if: github.event.inputs.cloudformation_action == 'apply'
+        run: |
+          echo "Action == ${{github.event.inputs.cloudformation_action}}"
+          if aws cloudformation describe-stacks --stack-name ${{github.event.inputs.cloudformation_stack_name}} --region ${{vars.AWS_REGION}}; then
+            echo "Stack exists, updating..."
+            aws cloudformation update-stack \
+              --stack-name ${{github.event.inputs.cloudformation_stack_name}} \
+              --template-body file://resources/${{github.event.inputs.cloudformation_template_folder}}/${{github.event.inputs.cloudformation_stack_name}}-cfn.yaml \
+              --capabilities CAPABILITY_NAMED_IAM \
+              --region ${{vars.AWS_REGION}}
+          else
+            echo "Stack does not exist, creating..."
+            aws cloudformation create-stack \
+              --stack-name ${{github.event.inputs.cloudformation_stack_name}} \
+              --template-body file://resources/${{github.event.inputs.cloudformation_template_folder}}/${{github.event.inputs.cloudformation_stack_name}}-cfn.yaml \
+              --capabilities CAPABILITY_NAMED_IAM \
+              --region ${{vars.AWS_REGION}}
+          fi
 
       - name: CloudFormation Delete Stack
         if: github.event.inputs.cloudformation_action == 'delete'

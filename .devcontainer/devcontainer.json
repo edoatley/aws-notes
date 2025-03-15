@@ -31,7 +31,8 @@
 				"aws-scripting-guy.cform",
 				"hashicorp.terraform",
 				"4ops.terraform",
-				"redhat.vscode-yaml"
+				"redhat.vscode-yaml",
+				"github.vscode-github-actions"
 			]
 		}
 	}

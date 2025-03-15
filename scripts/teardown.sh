@@ -8,4 +8,5 @@ export GITHUB_TOKEN=$GH_TOKEN_WORKFLOW
 gh workflow run aws-cfn.yaml \
   --field cloudformation_template_folder=$STACK_FOLDER \
   --field cloudformation_stack_name=$STACK_NAME \
-  --field cloudformation_action=apply
+  --field cloudformation_action=delete
+ 
