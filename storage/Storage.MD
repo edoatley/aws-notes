@@ -67,7 +67,7 @@ BASE has come into favour where very high volumes and need for more scale
   - security
   - compliance
   - latency
-- S3 storage classes: ![S3 Storage Classes](../images/s3-storage-classes.png)
+- S3 storage classes: ![S3 Storage Classes](../images/storage/s3-storage-classes.png)
 - S3 Lifecycle Management
   - optimize storage costs
   - Adhere to data retention policies e.g. destroy after x years
@@ -92,13 +92,39 @@ BASE has come into favour where very high volumes and need for more scale
 
 ## Managing permissions in S3
 
-- Bucket policies - defined at the bucket resource and give a particular principal access to some or all objects in a bucket. Can explicitly allow or explicitly deny access, and this will take precedence over any other permissions granted.
-- IAM - granting temporary permissions in the form of a role to a given user, service, or application. If you can assume the role, you can access the bucket.
+- S3 is private by default
+- Only the account root user has access to a bucket by default
+- Grant access via:
+  - Bucket policies - defined at the bucket resource and give a particular principal access to some or all objects in a bucket. Can explicitly allow or explicitly deny access, and this will take precedence over any other permissions granted.
+  - IAM - granting temporary permissions in the form of a role to a given user, service, or application. If you can assume the role, you can access the bucket.
 - Evaluating permissions:
   - If that user is denied access explicitly in the bucket policy, they will not be able to get objects from the bucket. 
   - If they're explicitly allowed to access objects in the bucket by the bucket policy, then regardless of any roles or permissions that IAM user has been granted, as a principal listed on that resource‑based policy, they'll be able to access objects in the bucket.
   - If bucket policy does not explicitly allow/deny then identity (IAM) policies are evaluated
 - Using trust policies and IAM roles you can share access across AWS accounts - considered more secure than bucket policies as IAM creds frequently rotate
+
+- Bucket policies can also add conditions blocking access unless the conditions are met. In this fragment we set the policy so it does not apply to IP 1.3.3.7 we could use this condition on a deny policy to allow this IP access regardless:
+
+```json
+{
+  "Condition": {
+    "NotIpAddress": {"aws:SourceIp": "1.3.3.7/32"}
+  }
+}
+```
+
+- Some bucket policy examples: https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html
+- access control lists (ACLs) are the old way of managing bucket access
+  - not recommended by AWS
+  - apply controls to objects and bucket
+  - inflexible and only simple permissions:
+    - read
+    - write
+    - read_acp (read ACL)
+    - write_acp (write ACL)
+    - full_control
+- 'block public access' settings apply regardless of S3 bucket policy for public access, meaning it must be explicitly disabled to allow public access.
+  This is a safeguard added by AWS to avoid making your data public by mistake.
 - Connecting to resources
   - via public endpoint (EC2 -> IGW -> S3 (public EP))
   - via ENI i.e. S3 gateway endpoint (stay on AWS internal network) - reduced storage costs
@@ -111,6 +137,6 @@ BASE has come into favour where very high volumes and need for more scale
 - integrated with AWS S3 via lifecycle management 
 - Offers faster retrieval speeds if you pay more - still not that fast (minutes)
 - Glacier vault is immutable (delete only)
-![Glacier Summary](../images/Glacier-Summary.png)
+![Glacier Summary](../images/storage/Glacier-Summary.png)
 - Glacier Vault Lock is immutable and that means it can't change. It can be overwritten, it can be deleted, but it can't be changed 
 - Glacier vault locks - create then up to 24 hours to abort or complete.  will auto abort if you do not confirm but once there it cannot be removed

@@ -6,7 +6,7 @@ on:
       cloudformation_template_folder:
         description: 'CloudFormation template file'
         required: true
-        default: 'vpc'
+        default: 'network'
       cloudformation_stack_name:
         description: 'CloudFormation stack name'
         required: true
@@ -38,7 +38,7 @@ jobs:
           echo "Create == ${{github.event.inputs.cloudformation_action}}"
           aws cloudformation create-stack \
             --stack-name ${{github.event.inputs.cloudformation_stack_name}} \
-            --template-body file://${{github.event.inputs.cloudformation_template_folder}}/${{github.event.inputs.cloudformation_stack_name}}-cfn.yaml \
+            --template-body file://resources/${{github.event.inputs.cloudformation_template_folder}}/${{github.event.inputs.cloudformation_stack_name}}-cfn.yaml \
             --capabilities CAPABILITY_NAMED_IAM \
             --region ${{vars.AWS_REGION}}
 
