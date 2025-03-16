@@ -12,6 +12,10 @@ Parameters:
     Type: String
     Description: The name of the IAM role
     Default: awsnotes-developer-role
+  GroupName:
+    Type: String
+    Description: The name of the IAM group
+    Default: awsnotes-developer-group
 
 Resources:
   DeveloperRole:
@@ -61,21 +65,37 @@ Resources:
                   - 'account:*'
                   - 'billing:*'
                 Resource: '*'
-  DeveloperUser:
-    Type: 'AWS::IAM::User'
+  DeveloperGroup:
+    Type: 'AWS::IAM::Group'
     Properties:
-      UserName: !Ref UserName
+      GroupName: !Ref GroupName
       Policies:
-        - PolicyName: AttachDeveloperRole
+        - PolicyName: !Ref PolicyName
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action: 'iam:PassRole'
                 Resource: !GetAtt DeveloperRole.Arn
-  AttachDeveloperRoleToUser:
+  DeveloperUser:
+    Type: 'AWS::IAM::User'
+    Properties:
+      UserName: !Ref UserName
+  AttachDeveloperRoleToGroup:
+    Type: 'AWS::IAM::GroupPolicy'
+    Properties:
+      GroupName: !Ref GroupName
+      PolicyName: AttachDeveloperRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: 'iam:PassRole'
+            Resource: !GetAtt DeveloperRole.Arn
+
+  AttachDeveloperUserToGroup:
     Type: 'AWS::IAM::UserToGroupAddition'
     Properties:
-      GroupName: !Ref DeveloperRole
+      GroupName: !Ref GroupName
       Users:
         - !Ref DeveloperUser
