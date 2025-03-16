@@ -32,10 +32,12 @@
 				"hashicorp.terraform",
 				"4ops.terraform",
 				"redhat.vscode-yaml",
-				"github.vscode-github-actions"
+				"github.vscode-github-actions",
+				"kddejong.vscode-cfn-lint"
 			]
 		}
-	}
+	},
+	"postCreateCommand": "apt-get update && apt-get install -y python3-pip && pip3 install cfn-lint"
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},

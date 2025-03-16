@@ -4,10 +4,14 @@ Parameters:
     Type: String
     Description: The name of the IAM user
     Default: awsnotes
+  PolicyName:
+    Type: String
+    Description: The name of the IAM policy
+    Default: developer-policy
   RoleName:
     Type: String
     Description: The name of the IAM role
-    Default: DeveloperRole
+    Default: awsnotes-developer-role
 
 Resources:
   DeveloperRole:
@@ -25,7 +29,7 @@ Resources:
                 - ecs-tasks.amazonaws.com
             Action: 'sts:AssumeRole'
       Policies: 
-        - PolicyName: DeveloperPolicy
+        - PolicyName: !Ref PolicyName
           PolicyDocument: 
             Version: '2012-10-17'
             Statement: 
