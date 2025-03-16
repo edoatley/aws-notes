@@ -15,7 +15,7 @@ Parameters:
   GroupName:
     Type: String
     Description: The name of the IAM group
-    Default: awsnotes-developer-group
+    Default: developer-group
 
 Resources:
   DeveloperRole:
@@ -65,6 +65,7 @@ Resources:
                   - 'account:*'
                   - 'billing:*'
                 Resource: '*'
+                
   DeveloperGroup:
     Type: 'AWS::IAM::Group'
     Properties:
@@ -77,6 +78,7 @@ Resources:
               - Effect: Allow
                 Action: 'iam:PassRole'
                 Resource: !GetAtt DeveloperRole.Arn
+
   DeveloperUser:
     Type: 'AWS::IAM::User'
     Properties:
@@ -92,6 +94,7 @@ Resources:
           - Effect: Allow
             Action: 'iam:PassRole'
             Resource: !GetAtt DeveloperRole.Arn
+    DependsOn: DeveloperGroup
 
   AttachDeveloperUserToGroup:
     Type: 'AWS::IAM::UserToGroupAddition'
@@ -99,3 +102,4 @@ Resources:
       GroupName: !Ref GroupName
       Users:
         - !Ref DeveloperUser
+    DependsOn: DeveloperGroup
