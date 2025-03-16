@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  UserName:
+    Type: String
+    Description: The name of the IAM user
+    Default: awsnotes
+  RoleName:
+    Type: String
+    Description: The name of the IAM role
+    Default: DeveloperRole
+
+Resources:
+  DeveloperRole:
+    Type: 'AWS::IAM::Role'
+    Properties: 
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17'
+        Statement: 
+          - Effect: Allow
+            Principal: 
+              Service: 
+                - ec2.amazonaws.com
+                - lambda.amazonaws.com
+                - ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies: 
+        - PolicyName: DeveloperPolicy
+          PolicyDocument: 
+            Version: '2012-10-17'
+            Statement: 
+              - Effect: Allow
+                Action: 
+                  - 'ec2:*'
+                  - 's3:*'
+                  - 'dynamodb:*'
+                  - 'lambda:*'
+                  - 'rds:*'
+                  - 'cloudwatch:*'
+                  - 'logs:*'
+                  - 'sns:*'
+                  - 'sqs:*'
+                  - 'ecs:*'
+                  - 'ecr:*'
+                  - 'eks:*'
+                  - 'cloudformation:*'
+                  - 'iam:PassRole'
+                Resource: '*'
+              - Effect: Deny
+                Action: 
+                  - 'aws-portal:*'
+                  - 'budgets:*'
+                  - 'ce:*'
+                  - 'cur:*'
+                  - 'support:*'
+                  - 'organizations:*'
+                  - 'account:*'
+                  - 'billing:*'
+                Resource: '*'
+  DeveloperUser:
+    Type: 'AWS::IAM::User'
+    Properties:
+      UserName: !Ref UserName
+      Policies:
+        - PolicyName: AttachDeveloperRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'iam:PassRole'
+                Resource: !GetAtt DeveloperRole.Arn
+  AttachDeveloperRoleToUser:
+    Type: 'AWS::IAM::UserToGroupAddition'
+    Properties:
+      GroupName: !Ref DeveloperRole
+      Users:
+        - !Ref DeveloperUser
