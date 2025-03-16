@@ -33,7 +33,10 @@
 				"4ops.terraform",
 				"redhat.vscode-yaml",
 				"github.vscode-github-actions",
-				"kddejong.vscode-cfn-lint"
+				"kddejong.vscode-cfn-lint",
+				"streetsidesoftware.code-spell-checker",
+				"yzhang.markdown-all-in-one",
+				"davidanson.vscode-markdownlint"
 			]
 		}
 	},

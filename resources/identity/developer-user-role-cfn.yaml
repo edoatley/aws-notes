@@ -22,6 +22,7 @@ Resources:
     Type: 'AWS::IAM::Role'
     Properties: 
       RoleName: !Ref RoleName
+      # The trust policy allows the role to be assumed by the specified services
       AssumeRolePolicyDocument: 
         Version: '2012-10-17'
         Statement: 
@@ -66,6 +67,7 @@ Resources:
                   - 'billing:*'
                 Resource: '*'
 
+  # Create a group and attach the policy to the group
   DeveloperGroup:
     Type: 'AWS::IAM::Group'
     Properties:
@@ -79,23 +81,13 @@ Resources:
                 Action: 'iam:PassRole'
                 Resource: !GetAtt DeveloperRole.Arn
 
+  # Create a user
   DeveloperUser:
     Type: 'AWS::IAM::User'
     Properties:
       UserName: !Ref UserName
-  # AttachDeveloperRoleToGroup:
-  #   Type: 'AWS::IAM::GroupPolicy'
-  #   Properties:
-  #     GroupName: !Ref GroupName
-  #     PolicyName: AttachDeveloperRole
-  #     PolicyDocument:
-  #       Version: '2012-10-17'
-  #       Statement:
-  #         - Effect: Allow
-  #           Action: 'iam:PassRole'
-  #           Resource: !GetAtt DeveloperRole.Arn
-  #   DependsOn: DeveloperGroup
 
+  # Attach the user to the group
   AttachDeveloperUserToGroup:
     Type: 'AWS::IAM::UserToGroupAddition'
     Properties:
