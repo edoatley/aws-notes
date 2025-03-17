@@ -140,3 +140,26 @@ BASE has come into favour where very high volumes and need for more scale
 ![Glacier Summary](../images/storage/Glacier-Summary.png)
 - Glacier Vault Lock is immutable and that means it can't change. It can be overwritten, it can be deleted, but it can't be changed 
 - Glacier vault locks - create then up to 24 hours to abort or complete.  will auto abort if you do not confirm but once there it cannot be removed
+
+## EBS
+
+- virtual hard drives
+- only work from EC2
+- Tied to a single AZ (need EC2 to be in same AZ!)
+- Unlike instance stores can be attached to different EC2 instances
+- EC2 must go over the network to access EBS so there is a little extra latency compared to instance stores
+- Powerful snapshots concept
+  - backup
+  - share data
+  - migrate EC2 to a new AZ or region
+  - convert unencrypted volume to encrypted
+  - initial snapshot is complete but then do differential
+  - if you delete an earlier incremental snapshot or the initial full snapshot AWS works some magic to still allow the 
+    remaining snapshots to be restored.
+- Amazon Data Lifecycle Manager
+  - automates snapshot creation on a schedule
+  - retention rules
+
+## Elastic File Service (EFS)
+
+- 

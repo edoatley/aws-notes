@@ -8,4 +8,10 @@ echo "Enter the SSO Start URL: $AWS_SSO_START_URL"
 echo "Enter the SSO Region: $AWS_SSO_REGION"
 echo "Enter the SSO registration scope: sso:account:access"
 
-aws configure sso --use-device-code
+# aws configure sso --use-device-code
+aws configure sso --profile "$AWS_SSO_SESSION" <<EOF
+$AWS_SSO_SESSION
+$AWS_SSO_START_URL
+$AWS_SSO_REGION
+sso:account:access
+EOF

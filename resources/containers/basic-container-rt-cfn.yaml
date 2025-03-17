@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EKS Cluster with ECR Registry
+
+Parameters:
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: The CIDR block for the VPC
+
+  Subnet1Cidr:
+    Type: String
+    Default: 10.0.1.0/24
+    Description: The CIDR block for Subnet1
+
+  Subnet2Cidr:
+    Type: String
+    Default: 10.0.2.0/24
+    Description: The CIDR block for Subnet2
+
+  Subnet3Cidr:
+    Type: String
+    Default: 10.0.3.0/24
+    Description: The CIDR block for Subnet3
+
+  VpcName:
+    Type: String
+    Default: MyVPC
+    Description: The name of the VPC
+
+  Subnet1Name:
+    Type: String
+    Default: Subnet1
+    Description: The name of Subnet1
+
+  Subnet2Name:
+    Type: String
+    Default: Subnet2
+    Description: The name of Subnet2
+
+  Subnet3Name:
+    Type: String
+    Default: Subnet3
+    Description: The name of Subnet3
+
+  EKSClusterName:
+    Type: String
+    Default: MyEKSCluster
+    Description: The name of the EKS Cluster
+
+  ECRRepositoryName:
+    Type: String
+    Default: my-ecr-repo
+    Description: The name of the ECR Repository
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref VpcName
+
+  Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref Subnet1Cidr
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref Subnet1Name
+
+  Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref Subnet2Cidr
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref Subnet2Name
+
+  Subnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref Subnet3Cidr
+      AvailabilityZone: !Select [ 2, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref Subnet3Name
+
+  EKSClusterRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17'
+        Statement: 
+          - Effect: Allow
+            Principal: 
+              Service: 
+                - eks.amazonaws.com
+            Action: 
+              - sts:AssumeRole
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref EKSClusterName
+      RoleArn: !GetAtt EKSClusterRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds:
+          - !Ref Subnet1
+          - !Ref Subnet2
+          - !Ref Subnet3
+        SecurityGroupIds:
+          - !Ref EKSSecurityGroup
+
+  EKSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EKS Cluster security group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        # - IpProtocol: tcp
+        #   FromPort: 80
+        #   ToPort: 80
+        #   CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref ECRRepositoryName
+
+Outputs:
+  EKSClusterName:
+    Description: The name of the EKS Cluster
+    Value: !Ref EKSCluster
+
+  ECRRepositoryUri:
+    Description: The URI of the ECR Repository
+    Value: !GetAtt ECRRepository.RepositoryUri
