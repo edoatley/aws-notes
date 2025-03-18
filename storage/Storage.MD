@@ -162,4 +162,40 @@ BASE has come into favour where very high volumes and need for more scale
 
 ## Elastic File Service (EFS)
 
-- 
+- NFS is network file system and is a common way to share storage in linux
+- EFS is an implementation of the NFS protocol
+- Only pay for what you use (unlike EBS where you pay for the storage)  
+- Multi-AZ metadata and storage with mount points in one or many AZs
+- Can even be mounted from on-prem 
+  - Need a very fast and stable connection and NFS is not a secure protocol
+  - Would need direct connect + VPN
+  - Amazon DataSync is likely a better option
+- 3x more expensive than EBS, 20x more expensive than S3
+
+## FSx 
+
+- File share service for when EFS not suitable i.e not NFS
+- common used for windows file service integration with AWS
+- Four flavours
+  - FSx for NetApp ONTAP
+  - FSx for OpenZFS
+  - FSx for Windows File Server - Windows data analytics, line of business apps (SMB file protocol) 
+  - FSx for Lustre - High performance distributed applications (uses SSDs and offloads uncommonly used data to S3)
+- Exam focuses on last two
+- FSx consists of
+  - mount targets (connected systems e.g. EC2)
+  - a mount point (distributed file system)
+  - ENI (Elastic Network Interface) to allow comms between mount targets and the distributed file system
+- Security via IAM or more commonly Managed Microsoft AD (to allow existing permissions / users)
+
+## Amazon Storage Gateway
+
+- VM that can run on site or EC2
+- local storage resource backended by S3 and Glacier
+- Easy way to sync on prem data to cloud
+- Useful in cloud migrations - slow and steady way to sync data over
+- File gateway - exposes volumes as SMB or NFS shares - data replicated to S3 via an NFS/SMB mount point
+- Volume gateway stored mode - iSCSI - async replication of on-prem data to S3
+- Volume gateway cached mode - iSCSI - primary data to S3, frequently accessed data cached locally on-prem
+- Tape Gateway - iSCSI - supports many backup solutions
+- Option to throttle bandwidth

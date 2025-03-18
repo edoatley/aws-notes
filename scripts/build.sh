@@ -1,11 +1,16 @@
 #!/bin/bash
-STACK_FOLDER=${1:-network}
-STACK_NAME=${2:-simple-vpc}
 
-export GITHUB_TOKEN=$GH_TOKEN_WORKFLOW
+CFN_FILE=${1:-containers/basic-container-rt-cfn.yaml}
+STACK_NAME=$(echo $CFN_FILE | cut -d'/' -f2 | cut -d'.' -f1)
+AWS_REGION=${2:-eu-west-2}
+parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+cd "$parent_path"
 
-# call the aws-cfn.yaml workflow
-gh workflow run aws-cfn.yaml \
-  --field cloudformation_template_folder=$STACK_FOLDER \
-  --field cloudformation_stack_name=$STACK_NAME \
-  --field cloudformation_action=apply
+echo "Deploying CloudFormation stack: $STACK_NAME"
+echo "Using CloudFormation template: file://$parent_path/resources/$CFN_FILE"
+
+aws cloudformation create-stack \
+    --stack-name $STACK_NAME \
+    --template-body file://$parent_path/resources/$CFN_FILE \
+    --capabilities CAPABILITY_NAMED_IAM \
+    --region $AWS_REGION
