@@ -24,33 +24,50 @@ Parameters:
 
   VpcName:
     Type: String
-    Default: MyVPC
+    Default: vpc-eks-basic
     Description: The name of the VPC
 
   Subnet1Name:
     Type: String
-    Default: Subnet1
+    Default: snet-eks-basic-1
     Description: The name of Subnet1
 
   Subnet2Name:
     Type: String
-    Default: Subnet2
+    Default: snet-eks-basic-2
     Description: The name of Subnet2
 
   Subnet3Name:
     Type: String
-    Default: Subnet3
+    Default: snet-eks-basic-3
     Description: The name of Subnet3
 
   EKSClusterName:
     Type: String
-    Default: MyEKSCluster
+    Default: eks-basic
     Description: The name of the EKS Cluster
+
+  NodeGroupName:
+    Type: String
+    Default: eks-basic-nodes
+    Description: The name of the EKS Node Group
 
   ECRRepositoryName:
     Type: String
-    Default: my-ecr-repo
+    Default: ecr-basic
     Description: The name of the ECR Repository
+
+  DesiredCapacity:
+    Type: Number
+    Description: Desired number of worker nodes
+    Default: 2
+    MinValue: 1
+    MaxValue: 10
+
+  NodeInstanceType:
+    Type: String
+    Description: EC2 instance type for the worker nodes (For small EKS nodes, consider using burstable instance types like t3.small, t3.medium, or t3.large, or general-purpose instances like m5.large or m6i.large)
+    Default: t3.small
 
 Resources:
   VPC:
@@ -106,10 +123,6 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
-        # - IpProtocol: tcp
-        #   FromPort: 80
-        #   ToPort: 80
-        #   CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: -1
           FromPort: -1
@@ -119,6 +132,7 @@ Resources:
   EKSClusterRole:
     Type: AWS::IAM::Role
     Properties: 
+      RoleName: !Sub ${EKSClusterName}-role
       AssumeRolePolicyDocument: 
         Version: '2012-10-17'
         Statement: 
@@ -149,6 +163,25 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
         - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
 
+  EKSAdminRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - arn:aws:iam::503561418276:user/iamadmin
+                - arn:aws:sts::503561418276:assumed-role/AWSReservedSSO_PowerUserAccess_5664d530bb559f9a/awsnotesic
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+
   EKSCluster:
     Type: AWS::EKS::Cluster
     Properties:
@@ -161,6 +194,23 @@ Resources:
           - !Ref Subnet3
         SecurityGroupIds:
           - !Ref EKSSecurityGroup
+
+  NodeGroup:
+      Type: AWS::EKS::Nodegroup
+      Properties:
+        ClusterName: !Ref EKSClusterName
+        NodegroupName: !Ref NodeGroupName
+        NodeRole: !GetAtt EKSNodeInstanceRole.Arn
+        Subnets: 
+          - !GetAtt Subnet1.Arn
+          - !GetAtt Subnet2.Arn
+          - !GetAtt Subnet3.Arn
+        ScalingConfig:
+          DesiredSize: !Ref DesiredCapacity
+          MinSize: 1
+          MaxSize: 10
+        InstanceTypes:
+          - !Ref NodeInstanceType
 
   ECRRepository:
     Type: AWS::ECR::Repository
@@ -175,3 +225,7 @@ Outputs:
   ECRRepositoryUri:
     Description: The URI of the ECR Repository
     Value: !GetAtt ECRRepository.RepositoryUri
+
+  EKSClusterEndpoint:
+    Description: The endpoint for the EKS Cluster
+    Value: !GetAtt EKSCluster.Endpoint

@@ -2,8 +2,11 @@
 // README at: https://github.com/devcontainers/templates/tree/main/src/debian
 {
 	"name": "Debian",
+	
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"image": "mcr.microsoft.com/devcontainers/base:bullseye",
+
+	// Features to add to the dev container. More info: https://containers.dev/features.
 	"features": {
 		"ghcr.io/devcontainers/features/aws-cli:1": {
 			"version": "latest"
@@ -21,9 +24,14 @@
             "tflint": "latest"
         },
 		"ghcr.io/devcontainers/features/github-cli:1": {
-            "version": "latest"
-        }
+			"version": "latest"
+		},
+		"ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+			"kubectl": "latest"
+		}
 	},
+
+	// Configure tool-specific properties.
 	"customizations": {
 		"vscode": {
 			"extensions": [
@@ -40,16 +48,10 @@
 			]
 		}
 	},
-	"postCreateCommand": "apt-get update && apt-get install -y python3-pip && pip3 install cfn-lint"
-
-	// Features to add to the dev container. More info: https://containers.dev/features.
-	// "features": {},
+	"postCreateCommand": "apt-get update && apt-get install -y python3-pip && pip3 install cfn-lint "
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
-
-	// Configure tool-specific properties.
-	// "customizations": {},
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	// "remoteUser": "root"
