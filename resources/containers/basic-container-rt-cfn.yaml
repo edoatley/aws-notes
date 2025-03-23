@@ -202,9 +202,9 @@ Resources:
         NodegroupName: !Ref NodeGroupName
         NodeRole: !GetAtt EKSNodeInstanceRole.Arn
         Subnets: 
-          - !GetAtt Subnet1.Arn
-          - !GetAtt Subnet2.Arn
-          - !GetAtt Subnet3.Arn
+          - !GetAtt Subnet1.Id
+          - !GetAtt Subnet2.Id
+          - !GetAtt Subnet3.Id
         ScalingConfig:
           DesiredSize: !Ref DesiredCapacity
           MinSize: 1
