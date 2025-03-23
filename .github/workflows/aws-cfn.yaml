@@ -42,7 +42,7 @@ jobs:
         id: stack_state
         run: |
           STACK_STATUS=$(aws cloudformation describe-stacks --stack-name ${{github.event.inputs.cloudformation_stack_name}} --region ${{vars.AWS_REGION}} --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "STACK_NOT_FOUND")
-          tee "status=$STACK_STATUS" | $GITHUB_OUTPUT
+          echo "status=$STACK_STATUS" && echo "status=$STACK_STATUS" >> $GITHUB_OUTPUT
 
       - name: Delete if in ROLLBACK_COMPLETE state
         if: steps.stack_state.outputs.status == 'ROLLBACK_COMPLETE'
