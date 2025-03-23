@@ -196,22 +196,22 @@ Resources:
           - !Ref EKSSecurityGroup
 
   NodeGroup:
-      Type: AWS::EKS::Nodegroup
-      DependsOn: EKSCluster
-      Properties:
-        ClusterName: !Ref EKSClusterName
-        NodegroupName: !Ref NodeGroupName
-        NodeRole: !GetAtt EKSNodeInstanceRole.Arn
-        Subnets: 
+    Type: AWS::EKS::Nodegroup
+    DependsOn: EKSCluster
+    Properties:
+      ClusterName: !Ref EKSClusterName
+      NodegroupName: !Ref NodeGroupName
+      NodeRole: !GetAtt EKSNodeInstanceRole.Arn
+      Subnets: 
         - !Ref Subnet1
         - !Ref Subnet2
         - !Ref Subnet3
-        ScalingConfig:
-          DesiredSize: !Ref DesiredCapacity
-          MinSize: 1
-          MaxSize: 10
-        InstanceTypes:
-          - !Ref NodeInstanceType
+      ScalingConfig:
+        DesiredSize: !Ref DesiredCapacity
+        MinSize: 1
+        MaxSize: 10
+      InstanceTypes:
+        - !Ref NodeInstanceType
 
   ECRRepository:
     Type: AWS::ECR::Repository
