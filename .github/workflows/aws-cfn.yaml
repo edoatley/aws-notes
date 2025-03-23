@@ -54,7 +54,7 @@ jobs:
           echo "Stack deleted."
 
       - name: Create if not found
-        if: steps.stack_state.outputs.status == 'STACK_NOT_FOUND'
+        if: steps.stack_state.outputs.status == 'STACK_NOT_FOUND' || steps.stack_state.outputs.status == 'ROLLBACK_COMPLETE'
         run: |
           echo "Stack does not exist, creating..."
           aws cloudformation create-stack \
