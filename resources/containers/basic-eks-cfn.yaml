@@ -2,61 +2,25 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: EKS Cluster with ECR Registry
 
 Parameters:
-  VpcCidr:
+  ClusterName:
     Type: String
-    Default: 10.0.0.0/16
-    Description: The CIDR block for the VPC
-
-  Subnet1Cidr:
-    Type: String
-    Default: 10.0.1.0/24
-    Description: The CIDR block for Subnet1
-
-  Subnet2Cidr:
-    Type: String
-    Default: 10.0.2.0/24
-    Description: The CIDR block for Subnet2
-
-  Subnet3Cidr:
-    Type: String
-    Default: 10.0.3.0/24
-    Description: The CIDR block for Subnet3
-
-  VpcName:
-    Type: String
-    Default: vpc-eks-basic
-    Description: The name of the VPC
-
-  Subnet1Name:
-    Type: String
-    Default: snet-eks-basic-1
-    Description: The name of Subnet1
-
-  Subnet2Name:
-    Type: String
-    Default: snet-eks-basic-2
-    Description: The name of Subnet2
-
-  Subnet3Name:
-    Type: String
-    Default: snet-eks-basic-3
-    Description: The name of Subnet3
-
-  EKSClusterName:
-    Type: String
-    Default: eks-basic
-    Description: The name of the EKS Cluster
-
+    Description: Name of the EKS cluster
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: ID of the Amazon VPC for the cluster
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of subnet IDs in the VPC
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 key pair to associate with the worker nodes
   NodeGroupName:
     Type: String
-    Default: eks-basic-nodes
-    Description: The name of the EKS Node Group
-
-  ECRRepositoryName:
+    Description: Name of the EKS node group
+  NodeInstanceType:
     Type: String
-    Default: ecr-basic
-    Description: The name of the ECR Repository
-
+    Description: EC2 instance type for the worker nodes
+    Default: t3.medium
   DesiredCapacity:
     Type: Number
     Description: Desired number of worker nodes
@@ -64,148 +28,44 @@ Parameters:
     MinValue: 1
     MaxValue: 10
 
-  NodeInstanceType:
-    Type: String
-    Description: EC2 instance type for the worker nodes (For small EKS nodes, consider using burstable instance types like t3.small, t3.medium, or t3.large, or general-purpose instances like m5.large or m6i.large)
-    Default: t3.small
-
 Resources:
-  VPC:
-    Type: AWS::EC2::VPC
+  VpcConfig:
+    Type: AWS::EKS::Cluster
     Properties:
-      CidrBlock: !Ref VpcCidr
-      EnableDnsSupport: true
-      EnableDnsHostnames: true
-      Tags:
-        - Key: Name
-          Value: !Ref VpcName
-
-  Subnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: !Ref Subnet1Cidr
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Ref Subnet1Name
-
-  Subnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: !Ref Subnet2Cidr
-      AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Ref Subnet2Name
-
-  Subnet3:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: !Ref Subnet3Cidr
-      AvailabilityZone: !Select [ 2, !GetAZs '' ]
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Ref Subnet3Name
-
-  EKSSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: EKS Cluster security group
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
-          CidrIp: 0.0.0.0/0
+      Name: !Ref ClusterName
+      RoleArn: !GetAtt EKSClusterRole.Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !Ref ClusterSecurityGroup
+        SubnetIds: !Ref SubnetIds
 
   EKSClusterRole:
     Type: AWS::IAM::Role
-    Properties: 
-      RoleName: !Sub ${EKSClusterName}-role
-      AssumeRolePolicyDocument: 
-        Version: '2012-10-17'
-        Statement: 
-          - Effect: Allow
-            Principal: 
-              Service: 
-                - eks.amazonaws.com
-            Action: 
-              - sts:AssumeRole
-      ManagedPolicyArns: 
-        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
-        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
-
-  EKSNodeInstanceRole:
-    Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub ${ClusterName}-role
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: 2012-10-17
         Statement:
           - Effect: Allow
             Principal:
-              Service: 
-                - ec2.amazonaws.com
-            Action: 
-              - sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
-        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
-        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
-
-  EKSAdminRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              AWS:
-                - arn:aws:iam::503561418276:user/iamadmin
-                - arn:aws:sts::503561418276:assumed-role/AWSReservedSSO_PowerUserAccess_5664d530bb559f9a/awsnotesic
+              Service: eks.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
-        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
-        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
-        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
-        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
 
-  EKSCluster:
-    Type: AWS::EKS::Cluster
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      Name: !Ref EKSClusterName
-      RoleArn: !GetAtt EKSClusterRole.Arn
-      ResourcesVpcConfig:
-        SubnetIds:
-          - !Ref Subnet1
-          - !Ref Subnet2
-          - !Ref Subnet3
-        SecurityGroupIds:
-          - !Ref EKSSecurityGroup
+      GroupDescription: Security group for the EKS cluster
+      VpcId: !Ref VpcId
 
   NodeGroup:
     Type: AWS::EKS::Nodegroup
-    DependsOn: EKSCluster
     Properties:
-      ClusterName: !Ref EKSClusterName
+      ClusterName: !Ref ClusterName
       NodegroupName: !Ref NodeGroupName
-      NodeRole: !GetAtt EKSNodeInstanceRole.Arn
-      Subnets: 
-        - !Ref Subnet1
-        - !Ref Subnet2
-        - !Ref Subnet3
+      NodeRole: !GetAtt NodeInstanceRole.Arn
+      Subnets: !Ref SubnetIds
       ScalingConfig:
         DesiredSize: !Ref DesiredCapacity
         MinSize: 1
@@ -213,113 +73,26 @@ Resources:
       InstanceTypes:
         - !Ref NodeInstanceType
 
-  ECRRepository:
-    Type: AWS::ECR::Repository
+  NodeInstanceRole:
+    Type: AWS::IAM::Role
     Properties:
-      RepositoryName: !Ref ECRRepositoryName
-
-  # Add NAT Gateway and Route Tables
-  ElasticIP:
-    Type: AWS::EC2::EIP
-
-  NATGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt ElasticIP.AllocationId
-      SubnetId: !Ref Subnet1
-
-  RouteTable1:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub ${VpcName}-rtb-1
-
-  RouteTable2:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub ${VpcName}-rtb-2
-
-  RouteTable3:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub ${VpcName}-rtb-3
-
-  Route1:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref RouteTable1
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NATGateway
-
-  Route2:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref RouteTable2
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NATGateway
-
-  Route3:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref RouteTable3
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NATGateway
-  LocalRoute1:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref RouteTable1
-      DestinationCidrBlock: !Ref VpcCidr
-      GatewayId: local
-
-  LocalRoute2:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref RouteTable2
-      DestinationCidrBlock: !Ref VpcCidr
-      GatewayId: local
-
-  LocalRoute3:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref RouteTable3
-      DestinationCidrBlock: !Ref VpcCidr
-      GatewayId: local
-      
-  SubnetRouteTableAssociation1:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref Subnet1
-      RouteTableId: !Ref RouteTable1
-
-  SubnetRouteTableAssociation2:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref Subnet2
-      RouteTableId: !Ref RouteTable2
-
-  SubnetRouteTableAssociation3:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref Subnet3
-      RouteTableId: !Ref RouteTable3
+      RoleName: !Sub ${ClusterName}-node-instance-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
 
 Outputs:
-  EKSClusterName:
-    Description: The name of the EKS Cluster
-    Value: !Ref EKSCluster
-
-  ECRRepositoryUri:
-    Description: The URI of the ECR Repository
-    Value: !GetAtt ECRRepository.RepositoryUri
-
-  EKSClusterEndpoint:
-    Description: The endpoint for the EKS Cluster
-    Value: !GetAtt EKSCluster.Endpoint
+  ClusterNameOutput:
+    Description: Name of the EKS cluster
+    Value: !Ref ClusterName
+  NodeGroupNameOutput:
+    Description: Name of the EKS node group
+    Value: !Ref NodeGroupNameCluster
