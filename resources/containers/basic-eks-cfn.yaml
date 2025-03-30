@@ -11,7 +11,7 @@ Mappings:
       Subnet4: 10.0.192.0/18
 
 Parameters:
-  DesiredCapacity:
+  NumWorkerNodes:
     Type: Number
     Description: Desired number of worker nodes
     Default: 2
@@ -22,6 +22,11 @@ Parameters:
     Type: String
     Description: EC2 instance type for the worker nodes (For small EKS nodes, consider using burstable instance types like t3.small, t3.medium, or t3.large, or general-purpose instances like m5.large or m6i.large)
     Default: t3.small
+
+  KubernetesVersion:
+    Type: String
+    Description: Kubernetes version for the EKS cluster
+    Default: 1.31
 
 Resources:
 
@@ -169,42 +174,230 @@ Resources:
 # IAM - EKS Cluster Roles
 # ##########################################################
   IAMAmazonEKSAutoNodeRole:
-    Type: "AWS::IAM::Role"
+    Type: AWS::IAM::Role
     Properties:
       ManagedPolicyArns:
-      - "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
-      - "arn:aws:iam::aws:policy/AmazonEKSWorkerNodeMinimalPolicy"
-      RoleName: "AmazonEKSAutoNodeRole"
+      - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly
+      - arn:aws:iam::aws:policy/AmazonEKSWorkerNodeMinimalPolicy
+      RoleName: AmazonEKSAutoNodeRole
       Description: "Allows EKS nodes to connect to EKS Auto Mode clusters and to pull\
         \ container images from ECR."
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+        Version: '2012-10-17'
         Statement:
-        - Action: "sts:AssumeRole"
-          Effect: "Allow"
+        - Action: sts:AssumeRole
+          Effect: Allow"
           Principal:
-            Service: "ec2.amazonaws.com"
+            Service: ec2.amazonaws.com
   IAMAmazonEKSAutoClusterRole:
-    Type: "AWS::IAM::Role"
+    Type: AWS::IAM::Role
     Properties:
       ManagedPolicyArns:
-      - "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-      - "arn:aws:iam::aws:policy/AmazonEKSNetworkingPolicy"
-      - "arn:aws:iam::aws:policy/AmazonEKSBlockStoragePolicy"
-      - "arn:aws:iam::aws:policy/AmazonEKSLoadBalancingPolicy"
-      - "arn:aws:iam::aws:policy/AmazonEKSComputePolicy"
-      RoleName: "AmazonEKSAutoClusterRole"
+      - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+      - arn:aws:iam::aws:policy/AmazonEKSNetworkingPolicy
+      - arn:aws:iam::aws:policy/AmazonEKSBlockStoragePolicy
+      - arn:aws:iam::aws:policy/AmazonEKSLoadBalancingPolicy
+      - arn:aws:iam::aws:policy/AmazonEKSComputePolicy
+      RoleName: AmazonEKSAutoClusterRole
       Description: "Allows access to other AWS service resources that are required\
         \ to operate Auto Mode clusters managed by EKS."
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+        Version: '2012-10-17'
         Statement:
         - Action:
-          - "sts:AssumeRole"
-          - "sts:TagSession"
+          - sts:AssumeRole
+          - sts:TagSession
           Effect: "Allow"
           Principal:
-            Service: "eks.amazonaws.com"
+            Service: eks.amazonaws.com
+  IAMEksControlPlaneRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+            Effect: Allow
+            Principal:
+              Service:
+                - eks.amazonaws.com
+            Action: sts:AssumeRole
+      RoleName: EksControlPlaneRole
+      Description: "Allows EKS control plane to manage the cluster"
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+
+# ##########################################################
+# EKS Cluster
+# ##########################################################
+
+  # Create a new keypair for the AWS worker node
+  KeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: !Ref KeyPairName
+      KeyType: rsa
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-keypair"
+
+
+  ControlPlane:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref AWS::StackName
+      Version: "1.10"
+      RoleArn: !GetAtt ControlPlaneRole.Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !Ref ControlPlaneSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSnet1
+          - !Ref PrivateSnet2
+  
+  # Control plane security groups
+  ControlPlaneSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for the elastic network interfaces between the control plane and the worker nodes
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-ControlPlaneSecurityGroup"
+  ControlPlaneIngressFromWorkerNodesHttps:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Allow incoming HTTPS traffic (TCP/443) from worker nodes (for API server)
+      GroupId: !Ref ControlPlaneSecurityGroup
+      SourceSecurityGroupId: !Ref WorkerNodesSecurityGroup
+      IpProtocol: tcp
+      ToPort: 443
+      FromPort: 443
+  ControlPlaneEgressToWorkerNodesKubelet:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      Description: Allow outgoing kubelet traffic (TCP/10250) to worker nodes
+      GroupId: !Ref ControlPlaneSecurityGroup
+      DestinationSecurityGroupId: !Ref WorkerNodesSecurityGroup
+      IpProtocol: tcp
+      FromPort: 10250
+      ToPort: 10250
+  ControlPlaneEgressToWorkerNodesHttps:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      Description: Allow outgoing HTTPS traffic (TCP/442) to worker nodes (for pods running extension API servers)
+      GroupId: !Ref ControlPlaneSecurityGroup
+      DestinationSecurityGroupId: !Ref WorkerNodesSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+
+  # Worker nodes security group
+  # Note: default egress rule (allow all traffic to all destinations) applies
+  WorkerNodesSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for all the worker nodes
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-WorkerNodesSecurityGroup"
+        - Key: !Sub "kubernetes.io/cluster/${ControlPlane}"
+          Value: "owned"
+  WorkerNodesIngressFromWorkerNodes:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Allow all incoming traffic from other worker nodes
+      GroupId: !Ref WorkerNodesSecurityGroup
+      SourceSecurityGroupId: !Ref WorkerNodesSecurityGroup
+      IpProtocol: "-1"
+  WorkerNodesIngressFromControlPlaneKubelet:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Allow incoming kubelet traffic (TCP/10250) from control plane 
+      GroupId: !Ref WorkerNodesSecurityGroup
+      SourceSecurityGroupId: !Ref ControlPlaneSecurityGroup
+      IpProtocol: tcp
+      FromPort: 10250
+      ToPort: 10250
+  WorkerNodesIngressFromControlPlaneHttps:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Allow incoming HTTPS traffic (TCP/443) from control plane (for pods running extension API servers)
+      GroupId: !Ref WorkerNodesSecurityGroup
+      SourceSecurityGroupId: !Ref ControlPlaneSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+
+  # # Worker nodes (auto-scaling group)
+  WorkerNodesAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 1
+    Properties:
+      LaunchConfigurationName: !Ref WorkerNodesLaunchConfiguration
+      MinSize: !Ref NumWorkerNodes
+      MaxSize: !Ref NumWorkerNodes
+      VPCZoneIdentifier:
+          - !Ref PrivateSnet1
+          - !Ref PrivateSnet2
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-WorkerNodesAutoScalingGroup"
+          PropagateAtLaunch: true
+        # Without this tag, worker nodes are unable to join the cluster:
+        - Key: !Sub "kubernetes.io/cluster/${ControlPlane}"
+          Value: "owned"
+          PropagateAtLaunch: true
+  WorkerNodesLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    # Wait until cluster is ready before launching worker nodes
+    DependsOn: ControlPlane
+    Properties:
+      AssociatePublicIpAddress: true
+      IamInstanceProfile: !Ref WorkerNodesInstanceProfile
+    ImageId: !Sub
+      - "{{resolve:ssm:/aws/service/eks/optimized-ami/${Version}/amazon-linux-2/recommended/image_id}}"
+      - Version: !Ref KubernetesVersion
+    InstanceType: !Ref WorkerNodesInstanceType
+    KeyName: !Ref KeyPairName
+    SecurityGroups:
+      - !Ref WorkerNodesSecurityGroup
+    UserData:
+      Fn::Base64: !Sub |
+          #!/bin/bash
+          set -o xtrace
+          /etc/eks/bootstrap.sh ${ControlPlane}
+          /opt/aws/bin/cfn-signal \
+                          --exit-code $? \
+                          --stack  ${AWS::StackName} \
+                          --resource NodeGroup  \
+                          --region ${AWS::Region}
+  WorkerNodesInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref WorkerNodesRole
+        
+  WorkerNodesRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+              - ec2.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
 
 # ##########################################################
 # Outputs
