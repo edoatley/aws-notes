@@ -1,26 +1,16 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: 2010-09-09
 Description: EKS Cluster with ECR Registry
 
+Mappings:
+  VpcIpRanges:
+    Option1:
+      VPC: 10.0.0.0/16       
+      Subnet1: 10.0.0.0/18
+      Subnet2: 10.0.64.0/18
+      Subnet3: 10.0.128.0/18
+      Subnet4: 10.0.192.0/18
+
 Parameters:
-  ClusterName:
-    Type: String
-    Description: Name of the EKS cluster
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-    Description: ID of the Amazon VPC for the cluster
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: List of subnet IDs in the VPC
-  KeyName:
-    Type: AWS::EC2::KeyPair::KeyName
-    Description: EC2 key pair to associate with the worker nodes
-  NodeGroupName:
-    Type: String
-    Description: Name of the EKS node group
-  NodeInstanceType:
-    Type: String
-    Description: EC2 instance type for the worker nodes
-    Default: t3.medium
   DesiredCapacity:
     Type: Number
     Description: Desired number of worker nodes
@@ -28,71 +18,218 @@ Parameters:
     MinValue: 1
     MaxValue: 10
 
+  NodeInstanceType:
+    Type: String
+    Description: EC2 instance type for the worker nodes (For small EKS nodes, consider using burstable instance types like t3.small, t3.medium, or t3.large, or general-purpose instances like m5.large or m6i.large)
+    Default: t3.small
+
 Resources:
-  VpcConfig:
-    Type: AWS::EKS::Cluster
-    Properties:
-      Name: !Ref ClusterName
-      RoleArn: !GetAtt EKSClusterRole.Arn
-      ResourcesVpcConfig:
-        SecurityGroupIds:
-          - !Ref ClusterSecurityGroup
-        SubnetIds: !Ref SubnetIds
 
-  EKSClusterRole:
-    Type: AWS::IAM::Role
+# ##########################################################
+# VPC and Subnets
+# ##########################################################
+  VPC:
+    Type: AWS::EC2::VPC
     Properties:
-      RoleName: !Sub ${ClusterName}-role
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: eks.amazonaws.com
-            Action: sts:AssumeRole
+      CidrBlock: !FindInMap [ VpcIpRanges, Option1, VPC ]
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpc"
+
+  PublicSnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [ VpcIpRanges, Option1, Subnet1 ]
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-pub-snet-1"
+
+  PublicSnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [ VpcIpRanges, Option1, Subnet2 ]
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-pub-snet-2"
+
+  PrivateSnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [ VpcIpRanges, Option1, Subnet3 ]
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-priv-snet-1"
+
+  PrivateSnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [ VpcIpRanges, Option1, Subnet4 ]
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-priv-snet-2"
+
+# ##########################################################
+# Igw and routing
+# ##########################################################
+
+# Internet Gateway - used to allow public subnets to access the internet
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-igw"
+
+  VpcIgwAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+# Public Routing
+  RouteTablePublic:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-rtb-public"
+  RoutePublic:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  SubnetRouteTableAssociationPublic1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSnet1
+      RouteTableId: !Ref RouteTablePublic
+  SubnetRouteTableAssociationPublic2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSnet2
+      RouteTableId: !Ref RouteTablePublic
+
+# Private Routing
+  RouteTablePrivate1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-rtb-private-1"
+  RouteTablePrivate2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-rtb-private-2"
+  SubnetRouteTableAssociationPrivate1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSnet1
+      RouteTableId: !Ref RouteTablePrivate1
+  SubnetRouteTableAssociationPrivate2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSnet2
+      RouteTableId: !Ref RouteTablePrivate2
+
+# ##########################################################
+# VPC Endpoint for S3
+# ##########################################################
+  VpcEndpointS3:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Join ['', ['com.amazonaws.', !Ref 'AWS::Region', '.s3']]
+      VpcId: !Ref VPC
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref RouteTablePrivate1
+        - !Ref RouteTablePrivate2
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpce-s3"
+  
+# ##########################################################
+# IAM - EKS Cluster Roles
+# ##########################################################
+  IAMAmazonEKSAutoNodeRole:
+    Type: "AWS::IAM::Role"
+    Properties:
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
-
-  ClusterSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for the EKS cluster
-      VpcId: !Ref VpcId
-
-  NodeGroup:
-    Type: AWS::EKS::Nodegroup
-    Properties:
-      ClusterName: !Ref ClusterName
-      NodegroupName: !Ref NodeGroupName
-      NodeRole: !GetAtt NodeInstanceRole.Arn
-      Subnets: !Ref SubnetIds
-      ScalingConfig:
-        DesiredSize: !Ref DesiredCapacity
-        MinSize: 1
-        MaxSize: 10
-      InstanceTypes:
-        - !Ref NodeInstanceType
-
-  NodeInstanceRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub ${ClusterName}-node-instance-role
+      - "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
+      - "arn:aws:iam::aws:policy/AmazonEKSWorkerNodeMinimalPolicy"
+      RoleName: "AmazonEKSAutoNodeRole"
+      Description: "Allows EKS nodes to connect to EKS Auto Mode clusters and to pull\
+        \ container images from ECR."
       AssumeRolePolicyDocument:
-        Version: 2012-10-17
+        Version: "2012-10-17"
         Statement:
-          - Effect: Allow
-            Principal:
-              Service: ec2.amazonaws.com
-            Action: sts:AssumeRole
+        - Action: "sts:AssumeRole"
+          Effect: "Allow"
+          Principal:
+            Service: "ec2.amazonaws.com"
+  IAMAmazonEKSAutoClusterRole:
+    Type: "AWS::IAM::Role"
+    Properties:
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
-        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
-        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      - "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+      - "arn:aws:iam::aws:policy/AmazonEKSNetworkingPolicy"
+      - "arn:aws:iam::aws:policy/AmazonEKSBlockStoragePolicy"
+      - "arn:aws:iam::aws:policy/AmazonEKSLoadBalancingPolicy"
+      - "arn:aws:iam::aws:policy/AmazonEKSComputePolicy"
+      RoleName: "AmazonEKSAutoClusterRole"
+      Description: "Allows access to other AWS service resources that are required\
+        \ to operate Auto Mode clusters managed by EKS."
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Action:
+          - "sts:AssumeRole"
+          - "sts:TagSession"
+          Effect: "Allow"
+          Principal:
+            Service: "eks.amazonaws.com"
 
-Outputs:
-  ClusterNameOutput:
-    Description: Name of the EKS cluster
-    Value: !Ref ClusterName
-  NodeGroupNameOutput:
-    Description: Name of the EKS node group
-    Value: !Ref NodeGroupNameCluster
+# ##########################################################
+# Outputs
+# ##########################################################
+  Outputs:
+    VPC:
+      Description: A reference to the created VPC
+      Value: !Ref VPC
+      Export:
+        Name: VPC
+
+    PublicSubnets:
+      Description: A list of the public subnets
+      Value: !Join [ ",", [ !Ref SubnetPublic1, !Ref SubnetPublic2 ]]
+      Export:
+        Name: PublicSubnets
+
+    PrivateSubnets:
+      Description: A list of the private subnets
+      Value: !Join [ ",", [ !Ref SubnetPrivate1, !Ref SubnetPrivate2 ]]
+      Export:
+        Name: PrivateSubnets
+
+    VPCEndpointS3:
+      Description: A reference to the created VPC Endpoint for S3
+      Value: !Ref VPCEndpointS3
+      Export:
+      Name: VPCEndpointS3
