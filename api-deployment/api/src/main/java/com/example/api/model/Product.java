@@ -1,8 +1,7 @@
 package com.example.api.model;
 
-import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBAttribute;
-import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBHashKey;
-import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBTable;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,18 +9,15 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-@DynamoDBTable(tableName = "Product")
+@DynamoDbBean
 public class Product {
-    
-    @DynamoDBHashKey
     private String id;
-    
-    @DynamoDBAttribute
     private String name;
-    
-    @DynamoDBAttribute
     private String description;
-    
-    @DynamoDBAttribute
     private Double price;
+
+    @DynamoDbPartitionKey
+    public String getId() {
+        return id;
+    }
 }

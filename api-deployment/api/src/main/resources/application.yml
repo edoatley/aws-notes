@@ -1,0 +1,14 @@
+amazon:
+  dynamodb:
+    # endpoint: http://localhost:4566
+    tableName: products
+  accessKeyId: ${AWS_ACCESS_KEY_ID:key}
+  secretKey: ${AWS_SECRET_ACCESS_KEY:key2}
+  region: us-east-1
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: product-api
