@@ -8,13 +8,14 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClientBuilder;
 
 import java.net.URI;
 
 @Configuration
 public class DynamoDBConfig {
 
-    @Value("${amazon.dynamodb.endpoint}")
+    @Value("${amazon.dynamodb.endpoint:}")
     private String dynamoDBEndpoint;
     
     @Value("${amazon.accessKeyId}")
@@ -26,14 +27,20 @@ public class DynamoDBConfig {
     @Value("${amazon.region}")
     private String region;
 
+    
     @Bean
     DynamoDbClient dynamoDbClient() {
-        return DynamoDbClient.builder()
-                .endpointOverride(URI.create(dynamoDBEndpoint))
-                .credentialsProvider(StaticCredentialsProvider.create(
+        DynamoDbClientBuilder builder = DynamoDbClient.builder();
+        builder.credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))
-                .region(Region.of(region))
-                .build();
+                .region(Region.of(region));
+
+        // Only set endpoint if specified (for local development)
+        if (dynamoDBEndpoint != null && !dynamoDBEndpoint.isEmpty()) {
+            builder.endpointOverride(URI.create(dynamoDBEndpoint));
+        }
+
+        return builder.build();
     }
 
     @Bean

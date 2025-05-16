@@ -21,7 +21,7 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Product> getProductById(@PathVariable String id) {
+    public ResponseEntity<Product> getProductById(@PathVariable("id") String id) {
         Product product = productRepository.findById(id);
         if (product != null) {
             return ResponseEntity.ok(product);
@@ -35,7 +35,7 @@ public class ProductController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Product> updateProduct(@PathVariable String id, @RequestBody Product product) {
+    public ResponseEntity<Product> updateProduct(@PathVariable("id") String id, @RequestBody Product product) {
         Product existingProduct = productRepository.findById(id);
         if (existingProduct != null) {
             product.setId(id);
@@ -45,7 +45,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteProduct(@PathVariable String id) {
+    public ResponseEntity<Void> deleteProduct(@PathVariable("id") String id) {
         Product existingProduct = productRepository.findById(id);
         if (existingProduct != null) {
             productRepository.deleteById(id);
