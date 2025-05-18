@@ -31,6 +31,7 @@ import static org.hamcrest.Matchers.*;
 @AutoConfigureMockMvc
 @Testcontainers
 public class ProductApiTest {
+    private static final String API_PRODUCTS = "/api/v1/products";
     private static final String LOCALSTACK_IMAGE_NAME = "localstack/localstack:3.3.0"; // Or your desired version
     private static final String TEST_TABLE_NAME = "my-test-table";
     private static final String TEST_TABLE_KEY = "id";
@@ -95,7 +96,7 @@ public class ProductApiTest {
         Product product = new Product("1", "Test Product", "Test Description", 99.99);
         String productJson = objectMapper.writeValueAsString(product);
 
-        mockMvc.perform(post("/api/products")
+        mockMvc.perform(post(API_PRODUCTS)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(productJson))
                 .andExpect(status().isOk())
@@ -110,7 +111,7 @@ public class ProductApiTest {
         Product product = new Product("1", "Test Product", "Test Description", 99.99);
         productRepository.save(product);
 
-        mockMvc.perform(get("/api/products/1"))
+        mockMvc.perform(get(API_PRODUCTS + "/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value("1"))
                 .andExpect(jsonPath("$.name").value("Test Product"));
@@ -123,7 +124,7 @@ public class ProductApiTest {
         productRepository.save(product1);
         productRepository.save(product2);
 
-        mockMvc.perform(get("/api/products"))
+        mockMvc.perform(get(API_PRODUCTS))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[*].id", containsInAnyOrder("1", "2")));
@@ -137,7 +138,7 @@ public class ProductApiTest {
         Product updatedProduct = new Product("1", "Updated Product", "Updated Description", 149.99);
         String updatedProductJson = objectMapper.writeValueAsString(updatedProduct);
 
-        mockMvc.perform(put("/api/products/1")
+        mockMvc.perform(put(API_PRODUCTS + "/1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updatedProductJson))
                 .andExpect(status().isOk())
@@ -150,10 +151,17 @@ public class ProductApiTest {
         Product product = new Product("1", "Test Product", "Test Description", 99.99);
         productRepository.save(product);
 
-        mockMvc.perform(delete("/api/products/1"))
+        mockMvc.perform(delete(API_PRODUCTS + "/1"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/products/1"))
+        mockMvc.perform(get(API_PRODUCTS + "/1"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldReturnHealthy() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.status").value("UP"));
     }
 }
