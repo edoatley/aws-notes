@@ -56,4 +56,4 @@ done
 
 # Run the test script
 echo "Running API tests..."
-../../api/scripts/test-api.sh "http://${PUBLIC_IP}:8080/api/v1/products"
+../../api/scripts/test-api-debug.sh "http://${PUBLIC_IP}:8080/api/v1/products"

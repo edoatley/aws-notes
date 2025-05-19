@@ -1,6 +1,6 @@
 amazon:
   dynamodb:
-    tableName: products
+    tableName: products-local
     endpoint: ${DYNAMODB_ENDPOINT:}  # Empty default for AWS
   accessKeyId: ${AWS_ACCESS_KEY_ID:key}
   secretKey: ${AWS_SECRET_ACCESS_KEY:key2}

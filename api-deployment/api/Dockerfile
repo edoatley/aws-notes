@@ -16,7 +16,7 @@ RUN ./gradlew --no-daemon bootJar && \
 
 # Run stage
 FROM eclipse-temurin:17-jre-alpine
-RUN apt-get update && apt-get install -y curl
+RUN apk add --no-cache curl
 VOLUME /tmp
 ARG DEPENDENCY=/app/build/dependency
 COPY --from=builder ${DEPENDENCY}/BOOT-INF/lib /app/lib
