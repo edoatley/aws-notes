@@ -54,6 +54,7 @@ else
     echo -e "${RED}Tests failed. Check the logs for more details.${NC}"
     # Print the logs from the pod to aid in debugging
     podman logs ${CONTAINER_NAME}
+    exit 1
 fi
 
 # Stop and remove the test container

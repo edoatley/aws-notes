@@ -135,6 +135,8 @@ Resources:
               Value: !Ref Environment
             - Name: DYNAMODB_TABLE_NAME
               Value: !Ref DynamoDBTable
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
           HealthCheck:
             Command:
               - CMD-SHELL
@@ -143,6 +145,12 @@ Resources:
             Timeout: 5
             Retries: 3
             StartPeriod: 60
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub "/aws/ecs/${AWS::StackName}-service"
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: api-container
 
   # ECS Service
   ECSService:
@@ -212,6 +220,15 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource: !GetAtt DynamoDBTable.Arn
+        - PolicyName: CloudWatchLogsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/ecs/${AWS::StackName}-service:*'"
 
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup

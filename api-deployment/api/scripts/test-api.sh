@@ -9,6 +9,9 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+exit_code_to_send=0
+
+# Function to make API calls and check response
 # Function to make API calls and check response
 call_api() {
     local method=$1
@@ -19,56 +22,35 @@ call_api() {
 
     echo "Performing $operation_name..."
     local RESPONSE
+    local HTTP_STATUS
     if [ -z "$data" ]; then
-        RESPONSE=$(curl -s -X "$method" "$endpoint")
+        RESPONSE=$(curl -s -w "%{http_code}" -X "$method" "$endpoint")
     else
-        RESPONSE=$(curl -s -X "$method" "$endpoint" \
+        RESPONSE=$(curl -s -w "%{http_code}" -X "$method" "$endpoint" \
             -H "Content-Type: application/json" \
             -d "$data")
     fi
     local CURL_EXIT_CODE=$?
     
-    echo "$operation_name response: $RESPONSE"
-    check_status "$CURL_EXIT_CODE" "$RESPONSE"
-    local STATUS=$?
-    print_result "$STATUS" "$operation_name"
+    # Extract the status code (last 3 characters) and response body
+    HTTP_STATUS="${RESPONSE:(-3)}"
+    RESPONSE_BODY="${RESPONSE:0:${#RESPONSE}-3}"
     
-    # Return the response for further processing if needed
-    echo "$RESPONSE"
-}
-
-# Function to print success/failure
-print_result() {
-    if [ $1 -eq 0 ]; then
-        echo -e "${GREEN}✓ $2${NC}"
+    echo "$operation_name response: $RESPONSE_BODY"
+    echo "$operation_name status code: $HTTP_STATUS"
+    
+    # Check if status matches expected
+    if [ "$HTTP_STATUS" = "$expected_status" ]; then
+        echo -e "${GREEN}✓ $operation_name, HTTP Status: $HTTP_STATUS${NC}"
+        echo "$RESPONSE_BODY"
+        return 0
     else
-        echo -e "${RED}✗ $2${NC}"
-        exit 1
-    fi
-}
-
-check_status() {
-    local curl_exit_code=$1
-    local response=$2
-    
-    if [ "$curl_exit_code" -eq 0 ]; then
-        # Extract status from JSON response
-        local http_status=$(echo "$response" | jq -r '.status')
-        
-        # Check if status is 200 or 201
-        if [ "$http_status" = "200" ] || [ "$http_status" = "201" ]; then
-            echo -e "${GREEN}✓ HTTP Status: $http_status${NC}"
-            return 0
-        else
-            echo -e "${RED}✗ HTTP Status: $http_status${NC}"
-            if [ "$http_status" = "500" ]; then
-                local error_message=$(echo "$response" | jq -r '.error')
-                echo -e "${RED}Error: $error_message${NC}"
-            fi
-            return 1
+        echo -e "${RED}✗ HTTP Status: $HTTP_STATUS (expected $expected_status)${NC}"
+        if [ "$HTTP_STATUS" = "500" ]; then
+            local error_message=$(echo "$RESPONSE_BODY" | jq -r '.error')
+            echo -e "${RED}Error $operation_name: $error_message${NC}"
         fi
-    else
-        echo -e "${RED}✗ Curl command failed with exit code: $curl_exit_code${NC}"
+        exit_code_to_send=1
         return 1
     fi
 }
@@ -77,16 +59,15 @@ echo "API_HOST=${API_HOST}"
 echo "API_URL=${API_URL}"
 
 # Check if API is reachable
-echo "Checking API availability..."
 HEALTH_RESPONSE=$(call_api "GET" "${API_HOST}/actuator/health" "" 200 "Health check")
 
 # Create a product
 CREATE_RESPONSE=$(call_api "POST" "$API_URL" \
-    '{"name":"Test Product","description":"A test product","price":10.99}' \
+    '{"id":"test-id-2","name":"Test Product","description":"A test product","price":10.99}' \
     201 "Create product")
 
 # Get the created product ID
-PRODUCT_ID=$(echo "$CREATE_RESPONSE" | jq -r '.id')
+PRODUCT_ID="test-id-2"
 
 # Get the product
 call_api "GET" "${API_URL}/${PRODUCT_ID}" "" 200 "Get product"
@@ -101,5 +82,10 @@ call_api "DELETE" "${API_URL}/${PRODUCT_ID}" "" 200 "Delete product"
 
 # Verify deletion
 call_api "GET" "${API_URL}/${PRODUCT_ID}" "" 404 "Verify deletion"
+
+if [ $exit_code_to_send -ne 0 ]; then
+    echo -e "${RED}Some tests failed. Please check the logs above.${NC}"
+    exit 1
+fi
 
 echo -e "${GREEN}All tests completed successfully!${NC}"
