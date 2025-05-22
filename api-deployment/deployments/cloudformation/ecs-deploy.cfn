@@ -134,7 +134,7 @@ Resources:
             - Name: SPRING_PROFILES_ACTIVE
               Value: !Ref Environment
             - Name: DYNAMODB_TABLE_NAME
-              Value: !Ref DynamoDBTable
+              Value: !Sub ${AWS::StackName}-${DynamoDBTableName}
             - Name: AWS_REGION
               Value: !Ref AWS::Region
           HealthCheck:
@@ -148,9 +148,10 @@ Resources:
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: !Sub "/aws/ecs/${AWS::StackName}-service"
+              awslogs-group: !Sub "/ecs/${AWS::StackName}-service"
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: api-container
+              awslogs-create-group: true
 
   # ECS Service
   ECSService:
@@ -184,16 +185,13 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
       Policies:
-        - PolicyName: ECRAccess
+        - PolicyName: CloudWatchLogsAccess
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
-                  - ecr:GetAuthorizationToken
-                  - ecr:BatchCheckLayerAvailability
-                  - ecr:GetDownloadUrlForLayer
-                  - ecr:BatchGetImage
+                  - logs:CreateLogGroup
                 Resource: '*'
 
   TaskRole:
@@ -228,7 +226,7 @@ Resources:
                 Action:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/ecs/${AWS::StackName}-service:*'"
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/${AWS::StackName}-service:*'
 
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
