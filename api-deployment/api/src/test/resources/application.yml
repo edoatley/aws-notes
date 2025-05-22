@@ -1,7 +1,7 @@
-amazon:
-  dynamodb:
-    endpoint: http://localhost:4566
-    tableName: my-test-table
-  accessKeyId: test
-  secretKey: test
+# LocalStack Test configuration for when credentials are provided
+dynamo:
+  endpoint: http://localhost:4566
+  table-name: my-test-table
+  access-key-id: test
+  secret-key: test
   region: us-east-1

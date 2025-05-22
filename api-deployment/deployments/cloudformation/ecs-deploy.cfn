@@ -133,7 +133,7 @@ Resources:
           Environment:
             - Name: SPRING_PROFILES_ACTIVE
               Value: !Ref Environment
-            - Name: DYNAMODB_TABLE_NAME
+            - Name: DYNAMO_TABLENAME
               Value: !Sub ${AWS::StackName}-${DynamoDBTableName}
             - Name: AWS_REGION
               Value: !Ref AWS::Region

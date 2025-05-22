@@ -1,24 +1,28 @@
 package com.example.api.repository;
 
+import com.example.api.config.DynamoProperties;
 import com.example.api.model.Product;
-import org.springframework.beans.factory.annotation.Value;
+
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
-import software.amazon.awssdk.enhanced.dynamodb.model.ScanEnhancedRequest;
 
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Repository
 public class ProductRepository {
 
     private final DynamoDbTable<Product> productTable;
 
-    public ProductRepository(DynamoDbEnhancedClient enhancedClient, 
-                           @Value("${amazon.dynamodb.tableName}") String tableName) {
-        this.productTable = enhancedClient.table(tableName, TableSchema.fromBean(Product.class));
+    public ProductRepository(DynamoDbEnhancedClient enhancedClient, DynamoProperties dynamoProperties) {
+        // Initialize the DynamoDB table using the enhanced client and the table name from properties
+        log.warn("========= Using DynamoDB table: {} =========", dynamoProperties.tableName());
+        this.productTable = enhancedClient.table(dynamoProperties.tableName(), TableSchema.fromBean(Product.class));
     }
 
     public Product save(Product product) {
