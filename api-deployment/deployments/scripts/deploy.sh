@@ -1,5 +1,7 @@
 #!/bin/bash
 
+
+TEMPLATE="${1:-ecs-deploy}"
 STACK_NAME="spring-boot-api"
 MAX_WAIT_MINUTES=10
 SLEEP_INTERVAL=30  # 30 seconds
@@ -28,7 +30,7 @@ get_stack_events() {
 
 echo "Validating CloudFormation template..."
 aws cloudformation validate-template \
-    --template-body file://$(dirname "$0")/../cloudformation/ecs-deploy.cfn | jq '.'
+    --template-body file://$(dirname "$0")/../cloudformation/$TEMPLATE.cfn | jq '.'
 if [ $? -ne 0 ]; then
     echo "Template validation failed. Exiting."
     exit 1
@@ -42,7 +44,7 @@ if stack_exists; then
     current_status=$(check_stack_status)
     aws cloudformation update-stack \
         --stack-name ${STACK_NAME} \
-        --template-body file://$(dirname "$0")/../cloudformation/ecs-deploy.cfn \
+        --template-body file://$(dirname "$0")/../cloudformation/$TEMPLATE.cfn \
         --parameters ParameterKey=ECRImageNameTag,ParameterValue=product-api:v1 \
         --capabilities CAPABILITY_IAM | jq '.'
     aws cloudformation wait stack-update-complete --stack-name ${STACK_NAME}
@@ -58,7 +60,7 @@ fi
 echo "Creating new stack ${STACK_NAME}..."
 aws cloudformation create-stack \
     --stack-name ${STACK_NAME} \
-    --template-body file://$(dirname "$0")/../cloudformation/ecs-deploy.cfn \
+    --template-body file://$(dirname "$0")/../cloudformation/$TEMPLATE.cfn \
     --parameters ParameterKey=ECRImageNameTag,ParameterValue=product-api:v1 \
     --capabilities CAPABILITY_IAM | jq '.'
 
