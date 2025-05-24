@@ -166,11 +166,14 @@ The cloudformation template [ecs-deploy-private.cfn](./deployments/cloudformatio
       - 2000 requests per 5 minutes per IP
 
 This implementation improves on the basic version by:
+
 1. Isolating ECS tasks in private subnets
 2. Adding API Gateway as a managed API layer
 3. Using VPC endpoints for private AWS service access
-4. Implementing basic rate limiting
-5. Providing proper load balancing
+  - interface endpoints that create an ENI in the subnets to access AWS services over a private IP
+  - gateway endpoints for S3 and dynamo that rely on route tables to route the traffic privately despite referencing the public IPs of those services
+4. Implementing basic rate limiting via WAF
+5. Providing cross AZ load balancing across the ECS tasks
 
 The network flow is as follows:
 
@@ -186,22 +189,26 @@ graph TB
         subgraph VPC
             subgraph Private_Subnet_1
                 ECS1[ECS Task]
-                NLB1[NLB Endpoint]
+                NLB_ENI1[NLB ENI]
             end
             subgraph Private_Subnet_2
                 ECS2[ECS Task]
-                NLB2[NLB Endpoint]
+                NLB_ENI2[NLB ENI]
             end
-            
+
+            NLB[Network Load Balancer]
+            VPCLink[VPC Link]
+
             VPCEndpoints{VPC Endpoints}
         end
-        
+
         APIGW[API Gateway]
         DDB[(DynamoDB)]
         CW[(CloudWatch Logs)]
         ECR[(ECR Registry)]
         S3[(S3)]
-        
+        ECS_ControlPlane[ECS Control Plane]
+
         subgraph IAM
             ExecutionRole[Execution Role]
             TaskRole[Task Role]
@@ -211,28 +218,34 @@ graph TB
             RateLimit[2000 req/5min/IP]
         end
     end
-    
+
     Internet((Internet))
 
-    %% Connections
+%% Connections
     Internet --> WAF
     WAF --> APIGW
-    APIGW --> NLB1
-    APIGW --> NLB2
-    NLB1 --> ECS1
-    NLB2 --> ECS2
+    APIGW --> VPCLink
+    VPCLink --> NLB
+    NLB --> NLB_ENI1
+    NLB --> NLB_ENI2
+    NLB_ENI1 --> ECS1
+    NLB_ENI2 --> ECS2
+
     ECS1 --> VPCEndpoints
     ECS2 --> VPCEndpoints
     VPCEndpoints --> DDB
     VPCEndpoints --> CW
     VPCEndpoints --> ECR
     VPCEndpoints --> S3
+    VPCEndpoints --> ECS_ControlPlane
+
     TaskRole -.-> DDB
     TaskRole -.-> CW
     ExecutionRole -.-> ECR
     ExecutionRole -.-> S3
-    
-    %% Styling
+    ExecutionRole -.-> CW 
+
+%% Styling 
     classDef aws fill:#FFE4B5,stroke:#D2691E,stroke-width:2px,color:#8B4513;
     classDef vpc fill:#E6E6FA,stroke:#483D8B,stroke-width:2px,color:#483D8B;
     classDef subnet fill:#E0FFFF,stroke:#5F9EA0,stroke-width:2px,color:#4682B4;
@@ -241,9 +254,9 @@ graph TB
     classDef waf fill:#FFE4E1,stroke:#FF6B6B,stroke-width:2px,color:#CD5C5C;
     classDef endpoints fill:#F0F8FF,stroke:#4682B4,stroke-width:2px,color:#4682B4;
 
-    %% Apply classes
-    class DDB,CW,ECR,S3,APIGW aws;
-    class VPC vpc;
+%% Apply classes
+    class DDB,CW,ECR,S3,APIGW,ECS_ControlPlane aws;
+    class VPC,NLB,VPCLink vpc;
     class Private_Subnet_1,Private_Subnet_2 subnet;
     class ExecutionRole,TaskRole,IAM iam;
     class Internet internet;

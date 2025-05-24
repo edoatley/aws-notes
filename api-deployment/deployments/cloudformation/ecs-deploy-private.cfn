@@ -302,7 +302,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
-                Resource: '*'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/${AWS::StackName}*" # Need to double check this after a full recreate
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -489,9 +489,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal: '*'
-            Action: '*'
-#            Action:
-#              - 's3:GetObject' # This is the primary action needed by ECR to download layers
+            Action:
+              - 's3:GetObject' # This is the primary action needed by ECR to download layers
             Resource: '*' # Allows the ExecutionRole to access any S3 bucket it has IAM permissions for, via this endpoint
       RouteTableIds:
         - !Ref PrivateRouteTable
@@ -649,6 +648,16 @@ Resources:
       DeploymentId: !Ref ApiGatewayDeployment
       RestApiId: !Ref ApiGateway
       StageName: !Ref Environment
+
+  WebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    DependsOn:
+      - ApiGateway
+      - ApiGatewayDeployment
+      - ApiGatewayStage
+    Properties:
+      ResourceArn: !Sub arn:aws:apigateway:${AWS::Region}::/restapis/${ApiGateway}/stages/${Environment}
+      WebACLArn: !GetAtt APIRateLimit.Arn
 
 Outputs:
   ClusterName:
