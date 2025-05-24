@@ -21,7 +21,33 @@ Parameters:
     Type: String
     Description: Image name and Tag to deploy
     Default: "product-api:v1"
-    
+
+  # Can lookup prefix lists with aws cli:
+  # aws ec2 describe-managed-prefix-lists --region eu-west-2 --filters "Name=prefix-list-name,Values=com.amazonaws.eu-west-2.dynamodb"
+  S3PrefixList:
+    Type: String
+    Description: >
+      Prefix List for S3 access - Gateway VPC endpoints access S3 via this prefix list (of public IPs)
+      Select the 'com.amazonaws.<region>.s3' prefix list.
+    Default: "pl-7ca54015"
+
+  DDBPrefixList:
+    Type: String
+    Description: >
+      Prefix List for DynamoDB access - Gateway VPC endpoints access DynamoDB via this prefix list (of public IPs)
+      Select the 'com.amazonaws.<region>.dynamodb' prefix list.
+    Default: "pl-b3a742da"
+
+  # Used to control FlowLogsGroup
+  CreateNewFlowLogsLogGroup:
+    Type: String
+    Default: "false"
+    AllowedValues: [ "true", "false" ]
+    Description: "Set to 'false' if the VPC Flow Logs Log Group already exists and should be reused."
+
+Conditions:
+  ShouldCreateFlowLogsLogGroup: !Equals [!Ref CreateNewFlowLogsLogGroup, "true"]
+
 Resources:
 
   # ############################
@@ -66,13 +92,6 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-PrivateRT
-
-  # PrivateRoute:
-  #   Type: AWS::EC2::Route
-  #   Properties:
-  #     RouteTableId: !Ref PrivateRouteTable
-  #     DestinationCidrBlock: 0.0.0.0/0
-  #     NatGatewayId: !Ref NatGateway
 
   PrivateSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -204,7 +223,7 @@ Resources:
           HealthCheck:
             Command:
               - CMD-SHELL
-              - curl -f http://localhost:8080/actuator/health || exit 1
+              - !Sub "curl -f http://localhost:${ContainerPort}/actuator/health || exit 1"
             Interval: 30
             Timeout: 5
             Retries: 3
@@ -250,7 +269,7 @@ Resources:
       DeploymentConfiguration:
         DeploymentCircuitBreaker:
           Enable: true
-          Rollback: true
+          Rollback: false
         MaximumPercent: 200
         MinimumHealthyPercent: 50
 
@@ -319,6 +338,7 @@ Resources:
                   - logs:PutLogEvents
                 Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/${AWS::StackName}-service:*'
 
+
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -334,7 +354,14 @@ Resources:
           FromPort: 443
           ToPort: 443
           DestinationSecurityGroupId: !Ref VPCEndpointSecurityGroup
-
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          DestinationPrefixListId: !Ref S3PrefixList # Gateway VPC Endpoints use the public IP addresses of S3
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          DestinationPrefixListId: !Ref DDBPrefixList # Gateway VPC Endpoints use the public IP addresses of DDB
 
   VPCEndpointSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -380,6 +407,7 @@ Resources:
 
   FlowLogsLogGroup:
     Type: AWS::Logs::LogGroup
+    Condition: ShouldCreateFlowLogsLogGroup # Only create if condition is met
     Properties:
       LogGroupName: !Sub /aws/vpcflowlogs/${AWS::StackName}
       RetentionInDays: 7 # Adjust retention as needed
@@ -392,14 +420,11 @@ Resources:
       ResourceId: !Ref VPC
       DeliverLogsPermissionArn: !GetAtt FlowLogsRole.Arn
       LogDestinationType: cloud-watch-logs
-      LogGroupName: !Ref FlowLogsLogGroup
+      LogGroupName: !Sub /aws/vpcflowlogs/${AWS::StackName}
       TrafficType: ALL # Capture which traffic (ALL, ACCEPT, or REJECT)
       MaxAggregationInterval: 60 # Aggregation interval in seconds (60 or 600)
       # For more detailed logs we will leverage a custom log format:
       LogFormat: "${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status} ${vpc-id} ${subnet-id} ${instance-id} ${tcp-flags} ${type} ${pkt-srcaddr} ${pkt-dstaddr} ${region} ${az-id} ${sublocation-type} ${sublocation-id} ${pkt-src-aws-service} ${pkt-dst-aws-service} ${flow-direction} ${traffic-path}"
-    DependsOn:
-      - FlowLogsLogGroup
-      - FlowLogsRole
 
   # ############################
   # VPC Endpoints - private access to AWS services
@@ -412,10 +437,15 @@ Resources:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal:
-              AWS: !GetAtt TaskRole.Arn
+            Principal: '*'
+#              AWS: !GetAtt TaskRole.Arn
             Action:
-              - 'dynamodb:*'
+              - dynamodb:PutItem
+              - dynamodb:GetItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:Query
+              - dynamodb:Scan
             Resource: !GetAtt DynamoDBTable.Arn
       RouteTableIds:
         - !Ref PrivateRouteTable
@@ -458,10 +488,10 @@ Resources:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal:
-              AWS: !GetAtt ExecutionRole.Arn # The ECS task execution role
-            Action:
-              - 's3:GetObject' # This is the primary action needed by ECR to download layers
+            Principal: '*'
+            Action: '*'
+#            Action:
+#              - 's3:GetObject' # This is the primary action needed by ECR to download layers
             Resource: '*' # Allows the ExecutionRole to access any S3 bucket it has IAM permissions for, via this endpoint
       RouteTableIds:
         - !Ref PrivateRouteTable

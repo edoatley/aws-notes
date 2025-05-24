@@ -59,7 +59,7 @@ echo "API URL: $API_URL"
 # Run the test script 
 # When tests fail, collect logs
 echo "Running API tests..."
-"$PROJECT_ROOT/api/scripts/test-api.sh" "$API_URL" || {
+"$PROJECT_ROOT/boot-ddb-product-api/scripts/test-api.sh" "$API_URL" || {
     echo -e "${RED}Tests failed. Collecting diagnostic information...${NC}"
     echo "Collecting logs..."
     # Collect logs from the API Gateway
