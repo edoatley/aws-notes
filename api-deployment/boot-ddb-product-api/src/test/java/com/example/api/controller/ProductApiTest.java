@@ -46,11 +46,11 @@ public class ProductApiTest {
 
     @DynamicPropertySource
     static void overrideProperties(DynamicPropertyRegistry registry) {
-        registry.add("amazon.dynamodb-endpoint", () -> localStack.getEndpointOverride(LocalStackContainer.Service.DYNAMODB).toString());
-        registry.add("amazon.access-key-id", localStack::getAccessKey);
-        registry.add("amazon.secret-key", localStack::getSecretKey);
-        registry.add("amazon.region", localStack::getRegion);
-        registry.add("amazon.table-name", () -> TEST_TABLE_NAME);
+        registry.add("dynamo.endpoint", () -> localStack.getEndpointOverride(LocalStackContainer.Service.DYNAMODB).toString());
+        registry.add("dynamo.access-key-id", localStack::getAccessKey);
+        registry.add("dynamo.secret-key", localStack::getSecretKey);
+        registry.add("dynamo.region", localStack::getRegion);
+        registry.add("dynamo.table-name", () -> TEST_TABLE_NAME);
     }
 
     @BeforeAll
