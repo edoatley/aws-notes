@@ -24,47 +24,50 @@ check_stack_status() {
 get_stack_events() {
     aws cloudformation describe-stack-events \
         --stack-name ${STACK_NAME} \
-        --query 'StackEvents[?ResourceStatus==`CREATE_FAILED` || ResourceStatus==`UPDATE_FAILED`].[LogicalResourceId,ResourceStatusReason]' \
+        --query 'StackEvents[?ResourceStatus==`CREATE_FAILED` || ResourceStatus==`UPDATE_FAILED`].[Timestamp,LogicalResourceId,ResourceType,ResourceStatus,ResourceStatusReason]' \
         --output text
+}
+
+# Function to validate stack status after create/update
+validate_stack_applied_ok() {
+    local status=$(check_stack_status ${STACK_NAME})
+    if [[ "$status" != *"_COMPLETE" ]]; then
+        echo "Stack operation failed. Checking events..."
+        get_stack_events
+        exit 1
+    else
+        echo "Stack operation completed successfully."
+    fi
 }
 
 echo "Validating CloudFormation template..."
 aws cloudformation validate-template \
-    --template-body file://$(dirname "$0")/../cloudformation/$TEMPLATE.cfn | jq '.'
+    --template-body file://$(dirname "$0")/../cloudformation/$TEMPLATE.cfn --output text | cat
 if [ $? -ne 0 ]; then
     echo "Template validation failed. Exiting."
     exit 1
 fi
-echo "Template validation successful."£
+echo "Template validation successful."
 
-
-# Check if stack is in progress
+# Check if stack exists and handle accordingly
 if stack_exists; then
-    # Update the stack if it exists
-    current_status=$(check_stack_status)
+    echo "Updating existing stack ${STACK_NAME}..."
     aws cloudformation update-stack \
         --stack-name ${STACK_NAME} \
         --template-body file://$(dirname "$0")/../cloudformation/$TEMPLATE.cfn \
         --parameters ParameterKey=ECRImageNameTag,ParameterValue=product-api:v1 \
-        --capabilities CAPABILITY_IAM | jq '.'
+        --capabilities CAPABILITY_IAM --output text | cat
+    echo "Waiting for stack update to complete..."
     aws cloudformation wait stack-update-complete --stack-name ${STACK_NAME}
-    if [ $? -ne 0 ]; then
-        echo "Stack update failed. Checking events..."
-        get_stack_events
-        exit 1
-    fi
-    echo "Stack updated successfully."
+    validate_stack_applied_ok
+else
+    echo "Creating new stack ${STACK_NAME}..."
+    aws cloudformation create-stack \
+        --stack-name ${STACK_NAME} \
+        --template-body file://$(dirname "$0")/../cloudformation/$TEMPLATE.cfn \
+        --parameters ParameterKey=ECRImageNameTag,ParameterValue=product-api:v1 \
+        --capabilities CAPABILITY_IAM  --output text | cat
+    echo "Waiting for stack creation to complete..."
+    aws cloudformation wait stack-create-complete --stack-name ${STACK_NAME}
+    validate_stack_applied_ok
 fi
-
-
-echo "Creating new stack ${STACK_NAME}..."
-aws cloudformation create-stack \
-    --stack-name ${STACK_NAME} \
-    --template-body file://$(dirname "$0")/../cloudformation/$TEMPLATE.cfn \
-    --parameters ParameterKey=ECRImageNameTag,ParameterValue=product-api:v1 \
-    --capabilities CAPABILITY_IAM | jq '.'
-
-# Wait for stack completion
-aws cloudformation wait stack-create-complete --stack-name ${STACK_NAME}
-
-

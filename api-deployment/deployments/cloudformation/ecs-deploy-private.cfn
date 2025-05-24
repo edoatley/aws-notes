@@ -21,9 +21,13 @@ Parameters:
     Type: String
     Description: Image name and Tag to deploy
     Default: "product-api:v1"
-
+    
 Resources:
-  # VPC and Network Resources
+
+  # ############################
+  # Basic Networking Configuration
+  # ############################
+
   VPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -34,30 +38,12 @@ Resources:
         - Key: Name
           Value: !Sub ${AWS::StackName}-VPC
 
-  PublicSubnet1:
+  PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.1.0/24
       AvailabilityZone: !Select [0, !GetAZs '']
-      MapPublicIpOnLaunch: true
-
-  PublicSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: 10.0.2.0/24
-      AvailabilityZone: !Select [1, !GetAZs '']
-      MapPublicIpOnLaunch: true
-
-  # Private Subnets
-  PrivateSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: 10.0.3.0/24
-      AvailabilityZone: !Select [0, !GetAZs '']
-      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-PrivateSubnet1
@@ -66,71 +52,11 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.4.0/24
+      CidrBlock: 10.0.2.0/24
       AvailabilityZone: !Select [1, !GetAZs '']
-      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-PrivateSubnet2
-
-  # Add Internet Gateway
-  InternetGateway:
-    Type: AWS::EC2::InternetGateway
-    Properties:
-      Tags:
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-IGW
-
-  AttachGateway:
-    Type: AWS::EC2::VPCGatewayAttachment
-    Properties:
-      VpcId: !Ref VPC
-      InternetGatewayId: !Ref InternetGateway
-
-  # Add Route Table
-  PublicRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-PublicRT
-
-  PublicRoute:
-    Type: AWS::EC2::Route
-    DependsOn: AttachGateway
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref InternetGateway
-
-  # Associate Route Table with Subnets
-  PublicSubnet1RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnet1
-      RouteTableId: !Ref PublicRouteTable
-
-  PublicSubnet2RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnet2
-      RouteTableId: !Ref PublicRouteTable
-
-  # NAT Gateway
-  NatGatewayEIP:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-
-  NatGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt NatGatewayEIP.AllocationId
-      SubnetId: !Ref PublicSubnet1
-      Tags:
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-NatGateway
 
   # Private Route Table
   PrivateRouteTable:
@@ -141,12 +67,12 @@ Resources:
         - Key: Name
           Value: !Sub ${AWS::StackName}-PrivateRT
 
-  PrivateRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway
+  # PrivateRoute:
+  #   Type: AWS::EC2::Route
+  #   Properties:
+  #     RouteTableId: !Ref PrivateRouteTable
+  #     DestinationCidrBlock: 0.0.0.0/0
+  #     NatGatewayId: !Ref NatGateway
 
   PrivateSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -160,7 +86,80 @@ Resources:
       SubnetId: !Ref PrivateSubnet2
       RouteTableId: !Ref PrivateRouteTable
 
-  # DynamoDB Table
+  # ############################
+  # Network Load Balancer - loadbalances across ECS tasks
+  # ############################
+  NetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: network
+      Scheme: internal
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-nlb
+
+  NLBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Network Load Balancer
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 10.0.0.0/16  # Allow traffic from VPC.  Ideally, this would be restricted to the API Gateway's IP range, if known, or a more specific subnet.
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-nlb-sg
+
+  NetworkLoadBalancerSecurityGroupAttachment:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancerAttributes
+    Properties:
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Attributes:
+        - Key: load_balancing.cross_zone.enabled
+          Value: "true"
+  NLBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref NLBTargetGroup
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Port: 80
+      Protocol: TCP
+
+
+  NLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /actuator/health
+      HealthCheckProtocol: HTTP
+      Port: !Ref ContainerPort
+      Protocol: TCP
+      TargetType: ip
+      VpcId: !Ref VPC
+      HealthCheckPort: !Ref ContainerPort  # Add explicit health check port
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-tg
+
+  # VPC Link for API Gateway -> NetworkLoadBalancer
+  VpcLink:
+    Type: AWS::ApiGateway::VpcLink
+    Properties:
+      Name: !Sub ${AWS::StackName}-vpclink
+      TargetArns:
+        - !Ref NetworkLoadBalancer
+
+  # ############################
+  # DynamoDB
+  # ############################
   DynamoDBTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -172,14 +171,21 @@ Resources:
         - AttributeName: id
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
+      
+  # ############################
+  # ECS Cluster Configuration
+  # ############################
 
-  # ECS Cluster
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Sub ${AWS::StackName}-cluster
+      CapacityProviders:
+        - FARGATE
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
 
-  # Task Definition
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -219,10 +225,14 @@ Resources:
               awslogs-stream-prefix: api-container
               awslogs-create-group: true
 
-  # ECS Service
   ECSService:
     Type: AWS::ECS::Service
-    DependsOn: ALBListener
+    DependsOn: 
+      - NetworkLoadBalancer
+      - ECRDkrEndpoint
+      - ECRApiEndpoint
+      - S3Endpoint
+      - CloudWatchLogsEndpoint
     Properties:
       ServiceName: !Sub ${AWS::StackName}-service
       Cluster: !Ref ECSCluster
@@ -230,7 +240,7 @@ Resources:
       DesiredCount: 2
       LaunchType: FARGATE
       LoadBalancers:
-        - TargetGroupArn: !Ref ALBTargetGroup
+        - TargetGroupArn: !Ref NLBTargetGroup
           ContainerName: api-container
           ContainerPort: !Ref ContainerPort
       NetworkConfiguration:
@@ -241,8 +251,23 @@ Resources:
           SecurityGroups:
             - !Ref ECSSecurityGroup
           AssignPublicIp: DISABLED
+      HealthCheckGracePeriodSeconds: 120  # Give tasks time to start
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
 
-  # IAM Roles
+
+  # ############################
+  # IAM Roles and Policies
+  # ############################
+
+  # Execution role - used by ECS to pull the image from ECR and write logs to CloudWatch
+  # Task role - used by the ECS task to access DynamoDB and CloudWatch logs
+  # ECS Security Group - used by the ECS task to allow traffic only from the load balancer
+  
   ExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -308,14 +333,29 @@ Resources:
         - IpProtocol: tcp
           FromPort: !Ref ContainerPort
           ToPort: !Ref ContainerPort
-          SourceSecurityGroupId: !Ref ALBSecurityGroup
-      SecurityGroupEgress:
+          CidrIp: 10.0.0.0/16
+      SecurityGroupEgress:  # Allow outbound HTTPS traffic to VPC endpoints
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          CidrIp: 0.0.0.0/0
+          DestinationSecurityGroupId: !Ref VPCEndpointSecurityGroup
 
-  # VPC Endpoints
+
+  VPCEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for VPC Endpoints
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.0.0/16
+  
+  # ############################
+  # VPC Endpoints - private access to AWS services
+  # ############################
+  
   DynamoDBEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -323,7 +363,8 @@ Resources:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal: '*'
+            Principal:
+              AWS: !GetAtt TaskRole.Arn
             Action:
               - 'dynamodb:*'
             Resource: !GetAtt DynamoDBTable.Arn
@@ -332,6 +373,7 @@ Resources:
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.dynamodb'
       VpcId: !Ref VPC
 
+  # ECR Docker Registry 
   ECRDkrEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -345,6 +387,7 @@ Resources:
       SecurityGroupIds:
         - !Ref VPCEndpointSecurityGroup
 
+  # ECR API Endpoints
   ECRApiEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -358,6 +401,7 @@ Resources:
       SecurityGroupIds:
         - !Ref VPCEndpointSecurityGroup
 
+  # S3 Endpoint - used for ECR and CloudWatch logs
   S3Endpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -365,78 +409,62 @@ Resources:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal: '*'
-            Action: 's3:*'
-            Resource: '*'
+            Principal: 
+              AWS: !GetAtt ExecutionRole.Arn
+            Action: 
+              - 's3:GetObject'
+              - 's3:ListBucket'
+            Resource: 
+              - !Sub 'arn:aws:s3:::${AWS::AccountId}*'
+              - !Sub 'arn:aws:s3:::${AWS::AccountId}*/*'
       RouteTableIds:
         - !Ref PrivateRouteTable
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcEndpointType: Gateway
       VpcId: !Ref VPC
 
-  VPCEndpointSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
+  CloudWatchLogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
     Properties:
-      GroupDescription: Security group for VPC Endpoints
       VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 10.0.0.0/16
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
 
-  # Application Load Balancer
-  ALBSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for Application Load Balancer
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
+  APIRateLimit:
+      Type: AWS::WAFv2::WebACL
+      Properties:
+        Name: !Sub ${AWS::StackName}-ratelimit
+        Scope: REGIONAL
+        DefaultAction:
+          Allow: {}
+        Rules:
+          - Name: RateLimit
+            Priority: 1
+            Statement:
+              RateBasedStatement:
+                Limit: 2000  # Requests per 5 minutes per IP
+                AggregateKeyType: IP
+            Action:
+              Block: {}
+            VisibilityConfig:
+              SampledRequestsEnabled: true
+              CloudWatchMetricsEnabled: true
+              MetricName: !Sub ${AWS::StackName}-ratelimit
+        VisibilityConfig:
+          SampledRequestsEnabled: true
+          CloudWatchMetricsEnabled: true
+          MetricName: !Sub ${AWS::StackName}-acl
 
-  ApplicationLoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Scheme: internet-facing
-      LoadBalancerAttributes:
-        - Key: idle_timeout.timeout_seconds
-          Value: '60'
-      Subnets:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
-      SecurityGroups:
-        - !Ref ALBSecurityGroup
-
-  ALBListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref ALBTargetGroup
-      LoadBalancerArn: !Ref ApplicationLoadBalancer
-      Port: 80
-      Protocol: HTTP
-
-  ALBTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      HealthCheckIntervalSeconds: 30
-      HealthCheckPath: /actuator/health
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      Port: !Ref ContainerPort
-      Protocol: HTTP
-      TargetType: ip
-      UnhealthyThresholdCount: 5
-      VpcId: !Ref VPC
-
+  # ############################
   # API Gateway
+  # ############################
+
   ApiGateway:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -464,7 +492,9 @@ Resources:
       Integration:
         Type: HTTP_PROXY
         IntegrationHttpMethod: ANY
-        Uri: !Sub http://${ApplicationLoadBalancer.DNSName}/{proxy}
+        ConnectionType: VPC_LINK
+        ConnectionId: !Ref VpcLink
+        Uri: !Sub http://${NetworkLoadBalancer.DNSName}/{proxy}
         RequestParameters:
           integration.request.path.proxy: "method.request.path.proxy"
         PassthroughBehavior: WHEN_NO_MATCH
@@ -481,7 +511,9 @@ Resources:
       Integration:
         Type: HTTP_PROXY
         IntegrationHttpMethod: ANY
-        Uri: !Sub http://${ApplicationLoadBalancer.DNSName}/
+        ConnectionType: VPC_LINK
+        ConnectionId: !Ref VpcLink
+        Uri: !Sub http://${NetworkLoadBalancer.DNSName}/
         PassthroughBehavior: WHEN_NO_MATCH
       MethodResponses:
         - StatusCode: 200
@@ -491,6 +523,8 @@ Resources:
     DependsOn:
       - ApiGatewayProxyMethod
       - ApiGatewayRootMethod
+      - VpcLink
+      - NetworkLoadBalancer
     Properties:
       RestApiId: !Ref ApiGateway
 
