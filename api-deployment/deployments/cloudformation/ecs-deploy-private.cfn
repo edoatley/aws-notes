@@ -115,13 +115,6 @@ Resources:
         - Key: Name
           Value: !Sub ${AWS::StackName}-nlb-sg
 
-  NetworkLoadBalancerSecurityGroupAttachment:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancerAttributes
-    Properties:
-      LoadBalancerArn: !Ref NetworkLoadBalancer
-      Attributes:
-        - Key: load_balancing.cross_zone.enabled
-          Value: "true"
   NLBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -131,7 +124,6 @@ Resources:
       LoadBalancerArn: !Ref NetworkLoadBalancer
       Port: 80
       Protocol: TCP
-
 
   NLBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -233,6 +225,9 @@ Resources:
       - ECRApiEndpoint
       - S3Endpoint
       - CloudWatchLogsEndpoint
+      - ECSServiceEndpoint # Add dependencies for the new endpoints
+      - ECSAgentEndpoint
+      - ECSTelemetryEndpoint
     Properties:
       ServiceName: !Sub ${AWS::StackName}-service
       Cluster: !Ref ECSCluster
@@ -351,7 +346,61 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: 10.0.0.0/16
-  
+
+  # ############################
+  # VPC Flow Logs
+  # ############################
+
+  FlowLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: vpc-flow-logs.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FlowLogsToCloudWatchPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vpcflowlogs/${AWS::StackName}:*" # More specific resource
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-FlowLogsRole
+
+  FlowLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/vpcflowlogs/${AWS::StackName}
+      RetentionInDays: 7 # Adjust retention as needed
+
+  VPCFlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      # Monitor the VPC
+      ResourceType: VPC
+      ResourceId: !Ref VPC
+      DeliverLogsPermissionArn: !GetAtt FlowLogsRole.Arn
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref FlowLogsLogGroup
+      TrafficType: ALL # Capture which traffic (ALL, ACCEPT, or REJECT)
+      MaxAggregationInterval: 60 # Aggregation interval in seconds (60 or 600)
+      # For more detailed logs we will leverage a custom log format:
+      LogFormat: "${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status} ${vpc-id} ${subnet-id} ${instance-id} ${tcp-flags} ${type} ${pkt-srcaddr} ${pkt-dstaddr} ${region} ${az-id} ${sublocation-type} ${sublocation-id} ${pkt-src-aws-service} ${pkt-dst-aws-service} ${flow-direction} ${traffic-path}"
+    DependsOn:
+      - FlowLogsLogGroup
+      - FlowLogsRole
+
   # ############################
   # VPC Endpoints - private access to AWS services
   # ############################
@@ -409,14 +458,11 @@ Resources:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal: 
-              AWS: !GetAtt ExecutionRole.Arn
-            Action: 
-              - 's3:GetObject'
-              - 's3:ListBucket'
-            Resource: 
-              - !Sub 'arn:aws:s3:::${AWS::AccountId}*'
-              - !Sub 'arn:aws:s3:::${AWS::AccountId}*/*'
+            Principal:
+              AWS: !GetAtt ExecutionRole.Arn # The ECS task execution role
+            Action:
+              - 's3:GetObject' # This is the primary action needed by ECR to download layers
+            Resource: '*' # Allows the ExecutionRole to access any S3 bucket it has IAM permissions for, via this endpoint
       RouteTableIds:
         - !Ref PrivateRouteTable
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
@@ -428,6 +474,45 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+
+  ECSServiceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecs'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup # Use the same SG as other interface endpoints
+
+  ECSAgentEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecs-agent'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+
+  ECSTelemetryEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecs-telemetry'
       VpcEndpointType: Interface
       PrivateDnsEnabled: true
       SubnetIds:
