@@ -244,9 +244,6 @@ Resources:
       - ECRApiEndpoint
       - S3Endpoint
       - CloudWatchLogsEndpoint
-      - ECSServiceEndpoint # Add dependencies for the new endpoints
-      - ECSAgentEndpoint
-      - ECSTelemetryEndpoint
     Properties:
       ServiceName: !Sub ${AWS::StackName}-service
       Cluster: !Ref ECSCluster
@@ -503,45 +500,6 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      SecurityGroupIds:
-        - !Ref VPCEndpointSecurityGroup
-
-  ECSServiceEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VPC
-      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecs'
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      SecurityGroupIds:
-        - !Ref VPCEndpointSecurityGroup # Use the same SG as other interface endpoints
-
-  ECSAgentEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VPC
-      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecs-agent'
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      SecurityGroupIds:
-        - !Ref VPCEndpointSecurityGroup
-
-  ECSTelemetryEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VPC
-      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecs-telemetry'
       VpcEndpointType: Interface
       PrivateDnsEnabled: true
       SubnetIds:
