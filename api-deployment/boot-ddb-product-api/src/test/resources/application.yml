@@ -1,0 +1,7 @@
+# LocalStack Test configuration for when credentials are provided
+dynamo:
+  endpoint: http://localhost:4566
+  table-name: my-test-table
+  access-key-id: test
+  secret-key: test
+  region: us-east-1

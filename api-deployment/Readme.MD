@@ -1,0 +1,482 @@
+# API Deployment on AWS
+
+- [API Deployment on AWS](#api-deployment-on-aws)
+  - [Introduction](#introduction)
+  - [Deployment using ECS](#deployment-using-ecs)
+    - [Simplistic implementation](#simplistic-implementation)
+      - [Architecture Diagram](#architecture-diagram)
+    - [More Private Implementation](#more-private-implementation)
+      - [Architectural Diagram](#architectural-diagram)
+  - [Deployment using lambda](#deployment-using-lambda)
+    - [Amazon API Gateway to AWS Lambda to Amazon DynamoDB - Java](#amazon-api-gateway-to-aws-lambda-to-amazon-dynamodb---java)
+
+## Introduction
+
+Here we look at deploying a simple RESTful API to AWS. We will explore various different mechanisms to achieve this. 
+The API is written using Spring boot and provides the following:
+
+- `POST /api/v1/products` - Create a new product
+- `GET /api/v1/products/{id}` - Retrieve a specific product by ID
+- `GET /api/v1/products` - List all products
+- `PUT /api/v1/products/{id}` - Update an existing product
+- `DELETE /api/v1/products/{id}` - Delete a product by ID
+
+The database is DynamoDB and these operations are tested in the script [test-api.sh](./api/scripts/test-api.sh)
+
+## Deployment using ECS
+
+Elastic Container Service (ECS) is a container orchestration service provided by AWS. It integrates easily with other AWS services such as:
+- VPC
+- IAM
+- CloudWatch
+- DynamoDB
+
+In addition to the option of running your containers on ECS using EC2 VMs, ECS also supports both AWS Fargate for a serverless option. This can reduce operational burden and costs depending on the nature of the running container.
+
+### Simplistic implementation
+
+To get started I developed the cloudformation template [ecs-deploy.cfn](ecs-deployments/cloudformation/ecs-deploy.cfn) which has the following resources:
+
+- Network Resources
+    - VPC
+    - 2 Public Subnets - In different AZs for high availability
+    - Internet Gateway - Allows internet access
+    - Route Table - Routes traffic through IGW
+- Container Infrastructure
+    - ECS Cluster - Manages Fargate tasks
+    - Task Definition 
+      - image from ECR
+      - cloudwatch logging
+      -  health check on /actuator/health
+      -  fargate launch type
+      -  configuration (environment variables)
+      -  IAM roles links 
+- ECS Service
+    - Defined to runs in public subnets
+    - Public IP enabled
+    - Security group to allow traffic in on port 8080 and out - not best practice but this is a simple getting started config
+- DynamoDB Table 
+  - Hash key on `id`
+  - Pay-per-request billing
+  - Accessed by ECS tasks via TaskRole
+- Security - IAM Roles
+    - ExecutionRole - Allows ECS to pull images and create logs
+    - TaskRole - Allows containers to access DynamoDB and CloudWatch
+
+#### Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph AWS Cloud
+        subgraph VPC
+            subgraph Public_Subnet_1
+                ECS1[ECS Task]
+            end
+            subgraph Public_Subnet_2
+                ECS2[ECS Task]
+            end
+            IGW[Internet Gateway]
+        end
+        
+        DDB[(DynamoDB)]
+        CW[(CloudWatch Logs)]
+        ECR[(ECR Registry)]
+        
+        subgraph IAM
+            ExecutionRole[Execution Role]
+            TaskRole[Task Role]
+        end
+    end
+    
+    Internet((Internet))
+
+    %% Connections
+    Internet <--> IGW
+    IGW <--> ECS1
+    IGW <--> ECS2
+    ECS1 --> DDB
+    ECS2 --> DDB
+    ECS1 --> CW
+    ECS2 --> CW
+    ECR --> ECS1
+    ECR --> ECS2
+    TaskRole -.-> DDB
+    TaskRole -.-> CW
+    ExecutionRole -.-> ECR
+    
+    %% Styling
+    classDef aws fill:#FFE4B5,stroke:#D2691E,stroke-width:2px,color:#8B4513;
+    classDef vpc fill:#E6E6FA,stroke:#483D8B,stroke-width:2px,color:#483D8B;
+    classDef subnet fill:#E0FFFF,stroke:#5F9EA0,stroke-width:2px,color:#4682B4;
+    classDef iam fill:#F0FFF0,stroke:#228B22,stroke-width:2px,color:#006400;
+    classDef internet fill:#F5F5F5,stroke:#696969,stroke-width:2px,color:#696969;
+
+    %% Apply classes
+    class DDB,CW,ECR aws;
+    class VPC vpc;
+    class Public_Subnet_1,Public_Subnet_2 subnet;
+    class ExecutionRole,TaskRole,IAM iam;
+    class Internet internet;
+```
+
+With the infrastructure defined we can now deploy and test via script:
+
+```bash
+cd ecs-deployments/scripts
+# Cloudformation Deployment:
+./deploy.sh ecs-deploy
+# Testing:
+./ecs-api-test.sh
+```
+
+### More Private Implementation
+
+The cloudformation template [ecs-deploy-private.cfn](ecs-deployments/cloudformation/ecs-deploy-private.cfn) improves security and adds API Gateway integration with these resources:
+
+- Network Resources
+    - VPC
+    - 2 Private Subnets - For ECS tasks
+    - Network Load Balancer - to share load across the ECS tasks
+    - Private Route Tables - private subnet -> VPC Endpoint routing
+- Container Infrastructure
+    - ECS Cluster - Manages Fargate tasks
+    - Task Definition 
+      - Image from ECR
+      - CloudWatch logging
+      - Health check on /actuator/health
+      - Fargate launch type
+      - Environment variables
+      - IAM role links
+- API Gateway - for now simply provides a public endpoint and proxies traffic to the NLB
+- DynamoDB Table - as above
+- ECS Service
+    - Defined to runs in private subnets
+    - Public IP disabled
+- VPC Endpoints (PrivateLink)
+    - DynamoDB Gateway endpoint
+    - ECR API/Docker endpoints
+    - Logs - S3 / Cloudwatch
+- Security
+    - IAM Roles
+      - ExecutionRole - Pull images and create logs
+      - TaskRole - Access DynamoDB and CloudWatch
+    - Security Groups
+      - ECS & VPC Endpoints - Only allow inbound only from VPC
+    - WAF Rate Limiting
+      - 2000 requests per 5 minutes per IP
+
+This implementation improves on the basic version by:
+
+1. Isolating ECS tasks in private subnets
+2. Adding API Gateway as a managed API layer
+3. Using VPC endpoints for private AWS service access
+  - interface endpoints that create an ENI in the subnets to access AWS services over a private IP
+  - gateway endpoints for S3 and dynamo that rely on route tables to route the traffic privately despite referencing the public IPs of those services
+4. Implementing basic rate limiting via WAF
+5. Providing cross AZ load balancing across the ECS tasks
+
+The network flow is as follows:
+
+```text
+Client -> Internet -> API Gateway -> VPC Link -> Private NLB -> ECS Tasks (across AZs)
+```
+
+#### Architectural Diagram
+
+```mermaid
+graph TB
+    subgraph AWS Cloud
+        subgraph VPC
+            subgraph Private_Subnet_1
+                ECS1[ECS Task]
+                NLB_ENI1[NLB ENI]
+            end
+            subgraph Private_Subnet_2
+                ECS2[ECS Task]
+                NLB_ENI2[NLB ENI]
+            end
+
+            NLB[Network Load Balancer]
+            VPCLink[VPC Link]
+
+            VPCEndpoints{VPC Endpoints}
+        end
+
+        APIGW[API Gateway]
+        DDB[(DynamoDB)]
+        CW[(CloudWatch Logs)]
+        ECR[(ECR Registry)]
+        S3[(S3)]
+        ECS_ControlPlane[ECS Control Plane]
+
+        subgraph IAM
+            ExecutionRole[Execution Role]
+            TaskRole[Task Role]
+        end
+
+        subgraph WAF[WAF Rate Limiting]
+            RateLimit[2000 req/5min/IP]
+        end
+    end
+
+    Internet((Internet))
+
+%% Connections
+    Internet --> WAF
+    WAF --> APIGW
+    APIGW --> VPCLink
+    VPCLink --> NLB
+    NLB --> NLB_ENI1
+    NLB --> NLB_ENI2
+    NLB_ENI1 --> ECS1
+    NLB_ENI2 --> ECS2
+
+    ECS1 --> VPCEndpoints
+    ECS2 --> VPCEndpoints
+    VPCEndpoints --> DDB
+    VPCEndpoints --> CW
+    VPCEndpoints --> ECR
+    VPCEndpoints --> S3
+    VPCEndpoints --> ECS_ControlPlane
+
+    TaskRole -.-> DDB
+    TaskRole -.-> CW
+    ExecutionRole -.-> ECR
+    ExecutionRole -.-> S3
+    ExecutionRole -.-> CW 
+
+%% Styling 
+    classDef aws fill:#FFE4B5,stroke:#D2691E,stroke-width:2px,color:#8B4513;
+    classDef vpc fill:#E6E6FA,stroke:#483D8B,stroke-width:2px,color:#483D8B;
+    classDef subnet fill:#E0FFFF,stroke:#5F9EA0,stroke-width:2px,color:#4682B4;
+    classDef iam fill:#F0FFF0,stroke:#228B22,stroke-width:2px,color:#006400;
+    classDef internet fill:#F5F5F5,stroke:#696969,stroke-width:2px,color:#696969;
+    classDef waf fill:#FFE4E1,stroke:#FF6B6B,stroke-width:2px,color:#CD5C5C;
+    classDef endpoints fill:#F0F8FF,stroke:#4682B4,stroke-width:2px,color:#4682B4;
+
+%% Apply classes
+    class DDB,CW,ECR,S3,APIGW,ECS_ControlPlane aws;
+    class VPC,NLB,VPCLink vpc;
+    class Private_Subnet_1,Private_Subnet_2 subnet;
+    class ExecutionRole,TaskRole,IAM iam;
+    class Internet internet;
+    class WAF,RateLimit waf;
+    class VPCEndpoints endpoints;
+```
+
+Though this deployment is much better than the basic one it still has a number of shortcomings most notably the 
+API Gateway deployment should leverage robust authentication & authorization, likely using a Cognito user pool.
+
+These shortcomings could be addressed in a future iteration
+
+## Deployment using lambda
+
+Next we are going to explore doing the same thing using AWS Lambda which should simplify things significantly for such a basic application.
+To simplify things further we will use some pre-baked serverless patterns described on [serverlessland](https://serverlessland.com/patterns/)
+
+### AWS Serverless Application Model (SAM)
+
+According to the documentation:
+
+> AWS Serverless Application Model (AWS SAM) is an open-source framework for building serverless applications using infrastructure as code (IaC).
+
+Here we will try from scratch to create a lambda application using AWS SAM
+
+#### Step 1 - sam init
+
+To get started we install SAM as per the [documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) and run `sam init` which then proceeds with an interactive workflow:
+
+```text
+Which template source would you like to use? 1 - AWS Quick Start Templates
+Choose an AWS Quick Start application template: 1 - Hello World Example
+Use the most popular runtime and package type? (python3.13 and zip) [y/N]: n
+Which runtime would you like to use?: 7 - java21
+What package type would you like to use?: 1 - Zip
+Which dependency manager would you like to use?: 1 - gradle
+Would you like to enable X-Ray tracing on the function(s) in your application? [y/N]: y
+Would you like to enable monitoring using CloudWatch Application Insights? [y/N]: y
+Would you like to set Structured Logging in JSON format on your Lambda functions? [y/N]:  y
+Project name [sam-app]: java-ddb-product-api
+```
+
+This then works some magic and creates the application structure for you with the following displayed in the terminal:
+
+```text
+    -----------------------
+    Generating application:
+    -----------------------
+    Name: java-ddb-product-api
+    Runtime: java21
+    Architectures: x86_64
+    Dependency Manager: gradle
+    Application Template: hello-world
+    Output Directory: .
+    Configuration file: java-ddb-product-api/samconfig.toml
+    
+    Next steps can be found in the README file at java-ddb-product-api/README.md
+        
+
+Commands you can use next
+=========================
+[*] Create pipeline: cd java-ddb-product-api && sam pipeline init --bootstrap
+[*] Validate SAM template: cd java-ddb-product-api && sam validate
+[*] Test Function in the Cloud: cd java-ddb-product-api && sam sync --stack-name {stack-name} --watch
+```
+
+#### Step 2 - sam pipeline init --bootstrap
+
+We want to run the deployment via a GH actions pipeline so we can initiate the deployment that via the command:
+
+```bash
+cd java-ddb-product-api && sam pipeline init --bootstrap 
+```
+
+which ran another interactive workflow (some bits removed for brevity/security):
+
+```text
+Select a pipeline template to get started: 1 - AWS Quick Start Pipeline Templates
+Select CI/CD system: 3 - GitHub Actions
+
+You are using the 2-stage pipeline template.
+ _________    _________ 
+|         |  |         |
+| Stage 1 |->| Stage 2 |
+|_________|  |_________|
+
+Do you want to go through stage setup process now? [Y/n]: y
+
+Stage 1 Setup
+
+[1] Stage definition
+Stage configuration name: dev
+
+[2] Account details
+Select a credential source to associate with this stage: 3
+Associated account <AWS Acc ID> with configuration dev.
+Enter the region in which you want these resources to be created [eu-west-2]: 
+Select a user permissions provider: 1 - IAM (default)
+Enter the pipeline IAM user ARN if you have previously created one, or we will create one for you []: 
+
+[3] Reference application build resources
+Enter the pipeline execution role ARN if you have previously created one, or we will create one for you []: 
+Enter the CloudFormation execution role ARN if you have previously created one, or we will create one for you []: 
+Please enter the artifact bucket ARN for your Lambda function. If you do not have a bucket, we will create one for you []: 
+Does your application contain any IMAGE type Lambda functions? [y/N]: n
+
+[4] Summary
+Below is the summary of the answers:
+        1 - Account: <AWS Acc ID>
+        2 - Stage configuration name: dev
+        3 - Region: eu-west-2
+        4 - Pipeline user: [to be created]
+        5 - Pipeline execution role: [to be created]
+        6 - CloudFormation execution role: [to be created]
+        7 - Artifacts bucket: [to be created]
+        8 - ECR image repository: [skipped]
+Press enter to confirm the values above, or select an item to edit the value: 
+
+The following resources were created in your account:
+        - Pipeline execution role
+        - CloudFormation execution role
+        - Artifact bucket
+        - Pipeline IAM user
+
+Stage 2 Setup
+
+[1] Stage definition
+Stage configuration name: prod
+
+[2] Account details
+Select a credential source to associate with this stage: 3
+Associated account <AWS Acc ID> with configuration prod.
+Enter the region in which you want these resources to be created [eu-west-2]: 
+
+[3] Reference application build resources
+Enter the pipeline execution role ARN if you have previously created one, or we will create one for you []: 
+Enter the CloudFormation execution role ARN if you have previously created one, or we will create one for you []: 
+Please enter the artifact bucket ARN for your Lambda function. If you do not have a bucket, we will create one for you []: 
+Does your application contain any IMAGE type Lambda functions? [y/N]: n
+
+[4] Summary
+Below is the summary of the answers:
+        1 - Account: <AWS Acc ID>
+        2 - Stage configuration name: prod
+        3 - Region: eu-west-2
+        4 - Pipeline user ARN: arn:aws:iam::<AWS Acc ID>:user/aws-sam-cli-managed-dev-pipeline-resou-PipelineUser-ZHzmXqcFjxRG
+        5 - Pipeline execution role: [to be created]
+        6 - CloudFormation execution role: [to be created]
+        7 - Artifacts bucket: [to be created]
+        8 - ECR image repository: [skipped]
+Press enter to confirm the values above, or select an item to edit the value: 
+
+The following resources were created in your account:
+        - Pipeline execution role
+        - CloudFormation execution role
+        - Artifact bucket
+
+This template configures a pipeline that deploys a serverless application to a testing and a production stage.
+
+What is the GitHub secret name for pipeline user account access key ID? [AWS_ACCESS_KEY_ID]: SAM_AWS_ACCESS_KEY_ID_1
+What is the GitHub Secret name for pipeline user account access key secret? [AWS_SECRET_ACCESS_KEY]: SAM_AWS_SECRET_ACCESS_KEY_1
+What is the git branch used for production deployments? [main]: 
+What is the template file path? [template.yaml]: api-deployment/sam/java-ddb-product-api/template.yaml
+We use the stage configuration name to automatically retrieve the bootstrapped resources created when you ran `sam pipeline bootstrap`.
+
+Here are the stage configuration names detected in .aws-sam/pipeline/pipelineconfig.toml:
+        1 - dev
+        2 - prod
+Select an index or enter the stage 1's configuration name (as provided during the bootstrapping): 1
+What is the sam application stack name for stage 1? [sam-app]: sam-java-ddb-product-api-dev
+Stage 1 configured successfully, configuring stage 2.
+
+Here are the stage configuration names detected in .aws-sam/pipeline/pipelineconfig.toml:
+        1 - dev
+        2 - prod
+Select an index or enter the stage 2's configuration name (as provided during the bootstrapping): 2
+What is the sam application stack name for stage 2? [sam-app]: sam-java-ddb-product-api-prod
+Stage 2 configured successfully.
+
+SUMMARY
+We will generate a pipeline config file based on the following information:
+        Select a user permissions provider.: AWS IAM
+        What is the GitHub secret name for pipeline user account access key ID?: SAM_AWS_ACCESS_KEY_ID_1
+        What is the GitHub Secret name for pipeline user account access key secret?: SAM_AWS_SECRET_ACCESS_KEY_1
+        What is the git branch used for production deployments?: main
+        What is the template file path?: api-deployment/sam/java-ddb-product-api/template.yaml
+        Select an index or enter the stage 1's configuration name (as provided during the bootstrapping): 1
+        What is the sam application stack name for stage 1?: sam-java-ddb-product-api-dev
+        What is the pipeline execution role ARN for stage 1?: arn:aws:iam::<AWS Acc ID>:role/aws-sam-cli-managed-dev-pipel-PipelineExecutionRole-8ZelUvsUDiJN
+        What is the CloudFormation execution role ARN for stage 1?: arn:aws:iam::<AWS Acc ID>:role/aws-sam-cli-managed-dev-p-CloudFormationExecutionRo-Xik3IuCAnyTL
+        What is the S3 bucket name for artifacts for stage 1?: aws-sam-cli-managed-dev-pipeline-r-artifactsbucket-xkn3f3fg8zin
+        What is the ECR repository URI for stage 1?: 
+        What is the AWS region for stage 1?: eu-west-2
+        Select an index or enter the stage 2's configuration name (as provided during the bootstrapping): 2
+        What is the sam application stack name for stage 2?: sam-java-ddb-product-api-prod
+        What is the pipeline execution role ARN for stage 2?: arn:aws:iam::<AWS Acc ID>:role/aws-sam-cli-managed-prod-pipe-PipelineExecutionRole-aqksMyhWnm11
+        What is the CloudFormation execution role ARN for stage 2?: arn:aws:iam::<AWS Acc ID>:role/aws-sam-cli-managed-prod--CloudFormationExecutionRo-kXNxTMH8NQQN
+        What is the S3 bucket name for artifacts for stage 2?: aws-sam-cli-managed-prod-pipeline--artifactsbucket-kmex6rxriwjz
+        What is the ECR repository URI for stage 2?: 
+        What is the AWS region for stage 2?: eu-west-2
+Successfully created the pipeline configuration file(s):
+        - .github/workflows/pipeline.yaml
+```
+
+I then moved this to the root of the repo:
+
+```bash
+mv .github/workflows/pipeline.yaml <repo root>/.github/workflows/java-ddb-product-api.yaml
+```
+
+#### Step 2 - sam validate
+
+Before proceeding further we can validate the template:
+
+```bash
+sam validate
+/Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/template.yaml is a valid SAM Template
+```
+
+### Amazon API Gateway to AWS Lambda to Amazon DynamoDB - Java
+
+https://serverlessland.com/patterns/apigw-lambda-dynamodb-sam-java
+https://github.com/aws-samples/serverless-patterns/tree/main/apigw-lambda-dynamodb-sam-java
