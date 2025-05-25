@@ -1,14 +1,23 @@
 # API Deployment on AWS
 
-- [API Deployment on AWS](#api-deployment-on-aws)
-  - [Introduction](#introduction)
-  - [Deployment using ECS](#deployment-using-ecs)
-    - [Simplistic implementation](#simplistic-implementation)
-      - [Architecture Diagram](#architecture-diagram)
-    - [More Private Implementation](#more-private-implementation)
-      - [Architectural Diagram](#architectural-diagram)
-  - [Deployment using lambda](#deployment-using-lambda)
-    - [Amazon API Gateway to AWS Lambda to Amazon DynamoDB - Java](#amazon-api-gateway-to-aws-lambda-to-amazon-dynamodb---java)
+<!-- TOC -->
+* [API Deployment on AWS](#api-deployment-on-aws)
+  * [Introduction](#introduction)
+  * [Deployment using ECS](#deployment-using-ecs)
+    * [Simplistic implementation](#simplistic-implementation)
+      * [Architecture Diagram](#architecture-diagram)
+    * [More Private Implementation](#more-private-implementation)
+      * [Architectural Diagram](#architectural-diagram)
+  * [Deployment using lambda](#deployment-using-lambda)
+    * [AWS Serverless Application Model (SAM)](#aws-serverless-application-model-sam)
+      * [Step 1 - sam init](#step-1---sam-init)
+      * [Step 2 - sam pipeline init --bootstrap](#step-2---sam-pipeline-init---bootstrap)
+      * [Step 2 - sam validate](#step-2---sam-validate)
+      * [Step 3 - deploy and check lambda](#step-3---deploy-and-check-lambda)
+      * [Step 4 - test the API](#step-4---test-the-api)
+      * [Step 5 - update the Hello world API to function like the product API](#step-5---update-the-hello-world-api-to-function-like-the-product-api)
+    * [Amazon API Gateway to AWS Lambda to Amazon DynamoDB - Java](#amazon-api-gateway-to-aws-lambda-to-amazon-dynamodb---java)
+<!-- TOC -->
 
 ## Introduction
 
@@ -475,6 +484,239 @@ Before proceeding further we can validate the template:
 sam validate
 /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/template.yaml is a valid SAM Template
 ```
+
+#### Step 3 - deploy and check lambda
+
+Firstly we can commit the code to main to check the pipeline works. On doing this a workflow triggered in GitHub:
+
+![sam-github-pipeline](images/sam-github-pipeline.png)
+
+Secondly we can run a build locally:
+
+```bash
+❯ sam build                                                                                                                                                                                                                                                                                                              12:47:19
+sam deploy --guided
+Starting Build use cache                                                                                                                                                                                                                                                                                                                                                                                                         
+Cache is invalid, running build and copying resources for following functions (HelloWorldFunction)                                                                                                                                                                                                                                                                                                                               
+Building codeuri: /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/HelloWorldFunction runtime: java21 architecture: x86_64 functions: HelloWorldFunction                                                                                                                                                                                                                                                 
+ Running JavaGradleWorkflow:GradleBuild                                                                                                                                                                                                                                                                                                                                                                                          
+ Running JavaGradleWorkflow:JavaGradleCopyArtifacts                                                                                                                                                                                                                                                                                                                                                                              
+ Running JavaGradleWorkflow:CleanUp                                                                                                                                                                                                                                                                                                                                                                                              
+ Running JavaGradleWorkflow:JavaCopyDependencies                                                                                                                                                                                                                                                                                                                                                                                 
+
+Build Succeeded
+
+Built Artifacts  : .aws-sam/build
+Built Template   : .aws-sam/build/template.yaml
+
+Commands you can use next
+=========================
+[*] Validate SAM template: sam validate
+[*] Invoke Function: sam local invoke
+[*] Test Function in the Cloud: sam sync --stack-name {{stack-name}} --watch
+[*] Deploy: sam deploy --guided
+
+Configuring SAM deploy
+======================
+
+        Looking for config file [samconfig.toml] :  Found
+        Reading default arguments  :  Success
+
+        Setting default arguments for 'sam deploy'
+        =========================================
+        Stack Name [java-ddb-product-api]: 
+        AWS Region [eu-west-2]: 
+        #Shows you resources changes to be deployed and require a 'Y' to initiate deploy
+        Confirm changes before deploy [Y/n]: n
+        #SAM needs permission to be able to create roles to connect to the resources in your template
+        Allow SAM CLI IAM role creation [Y/n]: y
+        #Preserves the state of previously provisioned resources when an operation fails
+        Disable rollback [y/N]: 
+        HelloWorldFunction has no authentication. Is this okay? [y/N]: y
+        Save arguments to configuration file [Y/n]: y
+        SAM configuration file [samconfig.toml]: 
+        SAM configuration environment [default]: local
+
+        Looking for resources needed for deployment:
+        Creating the required resources...
+        Successfully created!
+
+        Managed S3 bucket: aws-sam-cli-managed-default-samclisourcebucket-iwqvvtsbytfu
+        Auto resolution of buckets can be turned off by setting resolve_s3=False
+        To use a specific S3 bucket, set --s3-bucket=<bucket_name>
+        Above settings can be stored in samconfig.toml
+
+        Saved arguments to config file
+        Running 'sam deploy' for future deployments will use the parameters saved above.
+        The above parameters can be changed by modifying samconfig.toml
+        Learn more about samconfig.toml syntax at 
+        https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-config.html
+
+        Uploading to java-ddb-product-api/93c7d69105961b6385a3429bc37c18a5  875089 / 875089  (100.00%)
+
+        Deploying with following values
+        ===============================
+        Stack name                   : java-ddb-product-api
+        Region                       : eu-west-2
+        Confirm changeset            : False
+        Disable rollback             : False
+        Deployment s3 bucket         : aws-sam-cli-managed-default-samclisourcebucket-iwqvvtsbytfu
+        Capabilities                 : ["CAPABILITY_IAM"]
+        Parameter overrides          : {}
+        Signing Profiles             : {}
+
+Initiating deployment
+=====================
+
+        Uploading to java-ddb-product-api/f7d4ea2596068f27406c8df4821ad23c.template  1960 / 1960  (100.00%)
+
+
+Waiting for changeset to be created..
+
+CloudFormation stack changeset
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Operation                                                                                               LogicalResourceId                                                                                       ResourceType                                                                                            Replacement                                                                                           
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
++ Add                                                                                                   ApplicationInsightsMonitoring                                                                           AWS::ApplicationInsights::Application                                                                   N/A                                                                                                   
++ Add                                                                                                   ApplicationResourceGroup                                                                                AWS::ResourceGroups::Group                                                                              N/A                                                                                                   
++ Add                                                                                                   HelloWorldFunctionHelloWorldPermissionProd                                                              AWS::Lambda::Permission                                                                                 N/A                                                                                                   
++ Add                                                                                                   HelloWorldFunctionRole                                                                                  AWS::IAM::Role                                                                                          N/A                                                                                                   
++ Add                                                                                                   HelloWorldFunction                                                                                      AWS::Lambda::Function                                                                                   N/A                                                                                                   
++ Add                                                                                                   ServerlessRestApiDeployment47fc2d5f9d                                                                   AWS::ApiGateway::Deployment                                                                             N/A                                                                                                   
++ Add                                                                                                   ServerlessRestApiProdStage                                                                              AWS::ApiGateway::Stage                                                                                  N/A                                                                                                   
++ Add                                                                                                   ServerlessRestApi                                                                                       AWS::ApiGateway::RestApi                                                                                N/A                                                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+Changeset created successfully. arn:aws:cloudformation:eu-west-2:503561418276:changeSet/samcli-deploy1748173812/2745b667-0bac-4663-afa5-049aca70a253
+
+
+2025-05-25 12:50:17 - Waiting for stack create/update to complete
+
+CloudFormation events from stack operations (refresh every 5.0 seconds)
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ResourceStatus                                                                                          ResourceType                                                                                            LogicalResourceId                                                                                       ResourceStatusReason                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+CREATE_IN_PROGRESS                                                                                      AWS::CloudFormation::Stack                                                                              java-ddb-product-api                                                                                    User Initiated                                                                                        
+CREATE_IN_PROGRESS                                                                                      AWS::IAM::Role                                                                                          HelloWorldFunctionRole                                                                                  -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::ResourceGroups::Group                                                                              ApplicationResourceGroup                                                                                -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::ResourceGroups::Group                                                                              ApplicationResourceGroup                                                                                Resource creation Initiated                                                                           
+CREATE_IN_PROGRESS                                                                                      AWS::IAM::Role                                                                                          HelloWorldFunctionRole                                                                                  Resource creation Initiated                                                                           
+CREATE_COMPLETE                                                                                         AWS::ResourceGroups::Group                                                                              ApplicationResourceGroup                                                                                -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::ApplicationInsights::Application                                                                   ApplicationInsightsMonitoring                                                                           -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::ApplicationInsights::Application                                                                   ApplicationInsightsMonitoring                                                                           Resource creation Initiated                                                                           
+CREATE_COMPLETE                                                                                         AWS::IAM::Role                                                                                          HelloWorldFunctionRole                                                                                  -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::Lambda::Function                                                                                   HelloWorldFunction                                                                                      -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::Lambda::Function                                                                                   HelloWorldFunction                                                                                      Resource creation Initiated                                                                           
+CREATE_IN_PROGRESS - CONFIGURATION_COMPLETE                                                             AWS::Lambda::Function                                                                                   HelloWorldFunction                                                                                      Eventual consistency check initiated                                                                  
+CREATE_IN_PROGRESS                                                                                      AWS::ApiGateway::RestApi                                                                                ServerlessRestApi                                                                                       -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::ApiGateway::RestApi                                                                                ServerlessRestApi                                                                                       Resource creation Initiated                                                                           
+CREATE_COMPLETE                                                                                         AWS::ApiGateway::RestApi                                                                                ServerlessRestApi                                                                                       -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::Lambda::Permission                                                                                 HelloWorldFunctionHelloWorldPermissionProd                                                              -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::ApiGateway::Deployment                                                                             ServerlessRestApiDeployment47fc2d5f9d                                                                   -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::Lambda::Permission                                                                                 HelloWorldFunctionHelloWorldPermissionProd                                                              Resource creation Initiated                                                                           
+CREATE_IN_PROGRESS                                                                                      AWS::ApiGateway::Deployment                                                                             ServerlessRestApiDeployment47fc2d5f9d                                                                   Resource creation Initiated                                                                           
+CREATE_COMPLETE                                                                                         AWS::Lambda::Permission                                                                                 HelloWorldFunctionHelloWorldPermissionProd                                                              -                                                                                                     
+CREATE_COMPLETE                                                                                         AWS::ApiGateway::Deployment                                                                             ServerlessRestApiDeployment47fc2d5f9d                                                                   -                                                                                                     
+CREATE_COMPLETE                                                                                         AWS::Lambda::Function                                                                                   HelloWorldFunction                                                                                      -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::ApiGateway::Stage                                                                                  ServerlessRestApiProdStage                                                                              -                                                                                                     
+CREATE_IN_PROGRESS                                                                                      AWS::ApiGateway::Stage                                                                                  ServerlessRestApiProdStage                                                                              Resource creation Initiated                                                                           
+CREATE_IN_PROGRESS - CONFIGURATION_COMPLETE                                                             AWS::ApplicationInsights::Application                                                                   ApplicationInsightsMonitoring                                                                           Eventual consistency check initiated                                                                  
+CREATE_COMPLETE                                                                                         AWS::ApplicationInsights::Application                                                                   ApplicationInsightsMonitoring                                                                           -                                                                                                     
+CREATE_COMPLETE                                                                                         AWS::ApiGateway::Stage                                                                                  ServerlessRestApiProdStage                                                                              -                                                                                                     
+CREATE_COMPLETE                                                                                         AWS::CloudFormation::Stack                                                                              java-ddb-product-api                                                                                    -                                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+CloudFormation outputs from deployed stack
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Outputs                                                                                                                                                                                                                                                                                                                                                                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Key                 HelloWorldFunctionIamRole                                                                                                                                                                                                                                                                                                                                                                                
+Description         Implicit IAM Role created for Hello World function                                                                                                                                                                                                                                                                                                                                                       
+Value               arn:aws:iam::503561418276:role/java-ddb-product-api-HelloWorldFunctionRole-3YjfTSL0zt6b                                                                                                                                                                                                                                                                                                                  
+
+Key                 HelloWorldApi                                                                                                                                                                                                                                                                                                                                                                                            
+Description         API Gateway endpoint URL for Prod stage for Hello World function                                                                                                                                                                                                                                                                                                                                         
+Value               https://7u44o3udy0.execute-api.eu-west-2.amazonaws.com/Prod/hello/                                                                                                                                                                                                                                                                                                                                       
+
+Key                 HelloWorldFunction                                                                                                                                                                                                                                                                                                                                                                                       
+Description         Hello World Lambda Function ARN                                                                                                                                                                                                                                                                                                                                                                          
+Value               arn:aws:lambda:eu-west-2:503561418276:function:java-ddb-product-api-HelloWorldFunction-SJX8fTLQtTg3                                                                                                                                                                                                                                                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+Successfully created/updated stack - java-ddb-product-api in eu-west-2
+```
+
+Looking at what has been created we can look at CloudFormation:
+
+```bash
+aws cloudformation list-stacks --region eu-west-2 --stack-status-filter CREATE_COMPLETE --output table
+# amended the output to remove some extraneous detail
++-----------------------------------------------------------------------------------------------------------------------------------------------------------------+
+||                                                                        StackSummaries                                                                         ||
+|+-------------------------+-------------------------------------------------------------------------------------------------------------------------------------+|
+||  CreationTime           |  2025-05-25T11:50:12.437000+00:00                                                                                                   ||
+||  LastUpdatedTime        |  2025-05-25T11:50:17.821000+00:00                                                                                                   ||
+||  StackId                |  arn:aws:cloudformation:eu-west-2:503561418276:stack/java-ddb-product-api/6a6a8440-395e-11f0-8bba-06f845de0133                      ||
+||  StackName              |  java-ddb-product-api                                                                                                               ||
+||  StackStatus            |  CREATE_COMPLETE                                                                                                                    ||
+||  TemplateDescription    |  java-ddb-product-api
+|+------------------------+--------------------------------------------------------------------------------------------------------------------------------------+|
+||  CreationTime          |  2025-05-25T11:49:25.286000+00:00                                                                                                    ||
+||  LastUpdatedTime       |  2025-05-25T11:49:40.737000+00:00                                                                                                    ||
+||  StackId               |  arn:aws:cloudformation:eu-west-2:503561418276:stack/aws-sam-cli-managed-default/4e568f10-395e-11f0-9b9f-02403da432b3                ||
+||  StackName             |  aws-sam-cli-managed-default                                                                                                         ||
+||  StackStatus           |  CREATE_COMPLETE                                                                                                                     ||
+||  TemplateDescription   |  Managed Stack for AWS SAM CLI                                                                                                       ||
+|+------------------------+--------------------------------------------------------------------------------------------------------------------------------------+|
+|+------------------------+--------------------------------------------------------------------------------------------------------------------------------------+|
+||  CreationTime          |  2025-05-25T11:48:48.791000+00:00                                                                                                    ||
+||  LastUpdatedTime       |  2025-05-25T11:48:54.520000+00:00                                                                                                    ||
+||  StackId               |  arn:aws:cloudformation:eu-west-2:503561418276:stack/sam-java-ddb-product-api-prod/38898110-395e-11f0-bfc9-027355a9c2b9              ||
+||  StackName             |  sam-java-ddb-product-api-prod                                                                                                       ||
+||  StackStatus           |  CREATE_COMPLETE                                                                                                                     ||
+||  TemplateDescription   |  java-ddb-product-api                                                                                                                ||
+|+------------------------+--------------------------------------------------------------------------------------------------------------------------------------+|
+||  CreationTime          |  2025-05-25T11:47:28.918000+00:00                                                                                                    ||
+||  LastUpdatedTime       |  2025-05-25T11:47:34.712000+00:00                                                                                                    ||
+||  StackId               |  arn:aws:cloudformation:eu-west-2:503561418276:stack/sam-java-ddb-product-api-dev/08eb41f0-395e-11f0-8db6-060b56d3a3dd               ||
+||  StackName             |  sam-java-ddb-product-api-dev                                                                                                        ||
+||  StackStatus           |  CREATE_COMPLETE                                                                                                                     ||
+||  TemplateDescription   |  java-ddb-product-api                                                                                                                ||
+|+------------------------+--------------------------------------------------------------------------------------------------------------------------------------+|
+|+---------------------+-----------------------------------------------------------------------------------------------------------------------------------------+|
+||  CreationTime       |  2025-05-25T11:16:09.052000+00:00                                                                                                       ||
+||  LastUpdatedTime    |  2025-05-25T11:16:24.512000+00:00                                                                                                       ||
+||  StackId            |  arn:aws:cloudformation:eu-west-2:503561418276:stack/aws-sam-cli-managed-prod-pipeline-resources/a87b4990-3959-11f0-9ff9-061e7c95a79b   ||
+||  StackName          |  aws-sam-cli-managed-prod-pipeline-resources                                                                                            ||
+||  StackStatus        |  CREATE_COMPLETE                                                                                                                        ||
+||  TemplateDescription|                                                                                                                                         ||
+|+---------------------+-----------------------------------------------------------------------------------------------------------------------------------------+|
+||  CreationTime       |  2025-05-25T11:13:49.662000+00:00                                                                                                       ||
+||  LastUpdatedTime    |  2025-05-25T11:14:05.127000+00:00                                                                                                       ||
+||  StackId            |  arn:aws:cloudformation:eu-west-2:503561418276:stack/aws-sam-cli-managed-dev-pipeline-resources/5566d300-3959-11f0-bc94-0286de70d613    ||
+||  StackName          |  aws-sam-cli-managed-dev-pipeline-resources                                                                                             ||
+||  StackStatus        |  CREATE_COMPLETE                                                                                                                        ||
+||  TemplateDescription|                                                                                                                                         ||
+|+---------------------+-----------------------------------------------------------------------------------------------------------------------------------------+|
+```
+
+So we now have a stack for the local, dev and prod stacks plus one for the aws sam cli and a dev and prod pipeline resources one. The API ones look like this:
+
+![sam-api-stack-resources](images/sam-api-stack-resources.png)
+
+while the sam cli one looks like this:
+
+![sam-aws-cli-stack](images/sam-aws-cli-stack.png)
+
+and the pipeline resources like this:
+
+![sam-pipeline-resources-stack](images/sam-pipeline-resources-stack.png)
+
+#### Step 4 - test the API
+
+#### Step 5 - update the Hello world API to function like the product API
 
 ### Amazon API Gateway to AWS Lambda to Amazon DynamoDB - Java
 
