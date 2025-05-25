@@ -38,16 +38,6 @@ Parameters:
       Select the 'com.amazonaws.<region>.dynamodb' prefix list.
     Default: "pl-b3a742da"
 
-  # Used to control FlowLogsGroup
-  CreateNewFlowLogsLogGroup:
-    Type: String
-    Default: "false"
-    AllowedValues: [ "true", "false" ]
-    Description: "Set to 'false' if the VPC Flow Logs Log Group already exists and should be reused."
-
-Conditions:
-  ShouldCreateFlowLogsLogGroup: !Equals [!Ref CreateNewFlowLogsLogGroup, "true"]
-
 Resources:
 
   # ############################
@@ -266,7 +256,7 @@ Resources:
       DeploymentConfiguration:
         DeploymentCircuitBreaker:
           Enable: true
-          Rollback: false
+          Rollback: true
         MaximumPercent: 200
         MinimumHealthyPercent: 50
 
@@ -299,7 +289,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
-                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/${AWS::StackName}*" # Need to double check this after a full recreate
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/${AWS::StackName}-service" # Specific to the service's log group
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -404,10 +394,25 @@ Resources:
 
   FlowLogsLogGroup:
     Type: AWS::Logs::LogGroup
-    Condition: ShouldCreateFlowLogsLogGroup # Only create if condition is met
+    DeletionPolicy: Delete
     Properties:
       LogGroupName: !Sub /aws/vpcflowlogs/${AWS::StackName}
-      RetentionInDays: 7 # Adjust retention as needed
+      RetentionInDays: 7
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-FlowLogsLogGroup
+
+
+  ApiGatewayAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/apigw/${AWS::StackName}
+      RetentionInDays: 7
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ApiGatewayAccessLogGroup
+
 
   VPCFlowLog:
     Type: AWS::EC2::FlowLog
@@ -606,6 +611,16 @@ Resources:
       DeploymentId: !Ref ApiGatewayDeployment
       RestApiId: !Ref ApiGateway
       StageName: !Ref Environment
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayAccessLogGroup.Arn # Create a new Log Group
+        Format: '{ "requestId":"$context.requestId", "ip": "$context.identity.sourceIp", ... }' # Example JSON format
+      MethodSettings:
+        - HttpMethod: '*'
+          ResourcePath: '/*'
+          LoggingLevel: INFO # Or ERROR
+          DataTraceEnabled: true # If detailed execution logging is needed
+          MetricsEnabled: true
+        # ... also define ApiGatewayAccessLogGroup (AWS::Logs::LogGroup) ...
 
   WebACLAssociation:
     Type: AWS::WAFv2::WebACLAssociation
