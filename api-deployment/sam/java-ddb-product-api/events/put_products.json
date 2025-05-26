@@ -1,0 +1,10 @@
+{
+  "httpMethod": "PUT",
+  "path": "/api/v1/products",
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"id\":\"test-id-x\",\"name\":\"Updated Product\",\"description\":\"An updated test product\",\"price\":19.99}",
+  "isBase64Encoded": false
+}
