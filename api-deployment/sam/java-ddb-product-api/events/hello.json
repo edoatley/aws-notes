@@ -1,0 +1,8 @@
+{
+  "httpMethod": "GET",
+  "path": "/hello",
+  "queryStringParameters": null,
+  "headers": null,
+  "body": null,
+  "isBase64Encoded": false
+}

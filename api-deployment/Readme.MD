@@ -716,7 +716,106 @@ and the pipeline resources like this:
 
 #### Step 4 - test the API
 
+Now we have the locally deployed plus the dev and prod stages deployed via the GitHub actions we can try to test them.
+
+Firstly we need the endpoints to test via API Gateway
+```bash
+for stack in $(aws cloudformation list-stacks --region eu-west-2 --stack-status-filter CREATE_COMPLETE --query "StackSummaries[*].{StackName: StackName}" --output text); do
+  ep=$(aws cloudformation describe-stacks --stack-name "${stack}" \
+    --query "Stacks[0].{HelloWorldApi: Outputs[?OutputKey=='HelloWorldApi'].OutputValue, HelloWorldFunction: Outputs[?OutputKey=='HelloWorldFunction'].OutputValue}" \
+    --output text \
+    --region eu-west-2)
+  echo $ep
+done
+```
+
+Which is a bit clunky but gives this:
+
+```output
+HELLOWORLDAPI           https://7u44o3udy0.execute-api.eu-west-2.amazonaws.com/Prod/hello/
+HELLOWORLDFUNCTION      arn:aws:lambda:eu-west-2:503561418276:function:java-ddb-product-api-HelloWorldFunction-SJX8fTLQtTg3
+HELLOWORLDAPI           https://4ck52bvc5k.execute-api.eu-west-2.amazonaws.com/Prod/hello/
+HELLOWORLDFUNCTION      arn:aws:lambda:eu-west-2:503561418276:function:sam-java-ddb-product-api-prod-HelloWorldFunction-xHHYGrg1JVE9
+HELLOWORLDAPI           https://09ro33fp8l.execute-api.eu-west-2.amazonaws.com/Prod/hello/
+HELLOWORLDFUNCTION      arn:aws:lambda:eu-west-2:503561418276:function:sam-java-ddb-product-api-dev-HelloWorldFunction-MvarrmekKyql
+```
+
+So lets start eacy and just curl the endpoints:
+
+```text
+api_identifiers=(7u44o3udy0 4ck52bvc5k 09ro33fp8l)
+for api_id in "${api_identifiers[@]}"; do
+  echo "Testing ${api_id}:"
+  curl -sX GET "https://${api_id}.execute-api.eu-west-2.amazonaws.com/Prod/hello/" | jq
+done
+```
+
+Which works nicely giving:
+
+```output
+Testing 7u44o3udy0:
+{
+  "message": "hello world",
+  "location": "35.177.124.4"
+}
+Testing 4ck52bvc5k:
+{
+  "message": "hello world",
+  "location": "18.175.177.35"
+}
+Testing 09ro33fp8l:
+{
+  "message": "hello world",
+  "location": "18.134.155.168"
+}
+```
+
+Now to invoke the lambda functions directly. Firstly we create a minimal [event](./sam/java-ddb-product-api/events/hello.json)
+
+We can test this event  locally with:
+
+```bash
+# Replace HelloWorldFunction with the logical ID from your template.yaml
+sam local invoke HelloWorldFunction -e event.json-e events/hello.json  --region eu-west-2    
+Invoking helloworld.App::handleRequest (java21)                                                                                                                                                                                                                                                                                                                                                                                  
+Local image was not found.                                                                                                                                                                                                                                                                                                                                                                                                       
+Removing rapid images for repo public.ecr.aws/sam/emulation-java21                                                                                                                                                                                                                                                                                                                                                               
+Building image........................
+Using local image: public.ecr.aws/lambda/java:21-rapid-x86_64.                                                                                                                                                                                                                                                                                                                                                                   
+                                                                                                                                                                                                                                                                                                                                                                                                                                 
+Mounting /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/.aws-sam/build/HelloWorldFunction as /var/task:ro,delegated, inside runtime container                                                                                                                                                                                                                                                          
+START RequestId: 07024244-2819-49a8-8b7d-1b1ffca65a78 Version: $LATEST
+END RequestId: 4f0ae3ae-97da-47f1-98f4-e7de1b1b4c48
+REPORT RequestId: 4f0ae3ae-97da-47f1-98f4-e7de1b1b4c48  Init Duration: 0.08 ms  Duration: 1188.15 ms    Billed Duration: 1189 ms        Memory Size: 512 MB     Max Memory Used: 512 MB 
+{"statusCode": 200, "headers": {"X-Custom-Header": "application/json", "Content-Type": "application/json"}, "body": "{ \"message\": \"hello world\", \"location\": \"84.71.84.203\" }"}
+```
+
+Finally we can invoke the functions already deployed to AWS using the HELLOWORLDFUNCTION values above
+
+HELLOWORLDAPI           https://7u44o3udy0.execute-api.eu-west-2.amazonaws.com/Prod/hello/
+HELLOWORLDFUNCTION      arn:aws:lambda:eu-west-2:503561418276:function:java-ddb-product-api-HelloWorldFunction-SJX8fTLQtTg3
+HELLOWORLDAPI           https://4ck52bvc5k.execute-api.eu-west-2.amazonaws.com/Prod/hello/
+HELLOWORLDFUNCTION      arn:aws:lambda:eu-west-2:503561418276:function:sam-java-ddb-product-api-prod-HelloWorldFunction-xHHYGrg1JVE9
+HELLOWORLDAPI           https://09ro33fp8l.execute-api.eu-west-2.amazonaws.com/Prod/hello/
+HELLOWORLDFUNCTION      arn:aws:lambda:eu-west-2:503561418276:function:sam-java-ddb-product-api-dev-HelloWorldFunction-MvarrmekKyql
+
+```bash
+stack_ids=( java-ddb-product-api sam-java-ddb-product-api-dev sam-java-ddb-product-api-prod)
+FUNCTION_LOGICAL_ID="HelloWorldFunction" # From template.yaml
+for sid in "${stack_ids[@]}"; do
+    echo "Testing ${sid}"
+    echo ""
+    sam remote invoke "${FUNCTION_LOGICAL_ID}" \
+        --event-file events/hello.json \
+        --stack-name "${sid}" \
+        --region eu-west-2 | jq '.body'
+    echo ""
+done        
+```
+
 #### Step 5 - update the Hello world API to function like the product API
+
+Now we have the hello world version working and we can test what we have it is time to amend our API to meet the contract we had in **boot-ddb-products-api**
 
 ### Amazon API Gateway to AWS Lambda to Amazon DynamoDB - Java
 
