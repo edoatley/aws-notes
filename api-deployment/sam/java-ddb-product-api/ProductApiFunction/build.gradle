@@ -9,6 +9,7 @@ repositories {
 dependencies {
     implementation 'com.amazonaws:aws-lambda-java-core:1.2.2'
     implementation 'com.amazonaws:aws-lambda-java-events:3.11.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.14.1'
     implementation 'software.amazon.awssdk:dynamodb:2.27.0'
     implementation 'software.amazon.awssdk:dynamodb-enhanced:2.26.16'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.1'
