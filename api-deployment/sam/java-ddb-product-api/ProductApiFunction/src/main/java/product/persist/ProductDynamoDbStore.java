@@ -37,6 +37,7 @@ public class ProductDynamoDbStore implements ProductDatastore {
 
     @Override
     public Product saveProduct(Product product) {
+        product.setId(java.util.UUID.randomUUID().toString());
         table.putItem(product);
         return product;
     }

@@ -1,0 +1,10 @@
+{
+  "httpMethod": "POST",
+  "path": "/api/v1/products",
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"name\":\"Brand New Product\",\"description\":\"A fantastic product created via POST\",\"price\":49.99}",
+  "isBase64Encoded": false
+}

@@ -1,10 +1,13 @@
 {
   "httpMethod": "PUT",
-  "path": "/api/v1/products",
+  "path": "/api/v1/products/{id}",
+  "pathParameters": {
+    "id": "57e3e2ee-5569-4d49-a4d0-bd067f3008a0"
+  },
   "queryStringParameters": null,
   "headers": {
     "Content-Type": "application/json"
   },
-  "body": "{\"id\":\"test-id-x\",\"name\":\"Updated Product\",\"description\":\"An updated test product\",\"price\":19.99}",
+  "body": "{\"id\":\"57e3e2ee-5569-4d49-a4d0-bd067f3008a0\",\"name\":\"Updated Product\",\"description\":\"An updated test product\",\"price\":19.99}",
   "isBase64Encoded": false
 }
