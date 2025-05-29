@@ -1,4 +1,4 @@
-name: Pipeline
+name: Pipeline for java-ddb-product-api
 
 on:
   push:
@@ -17,19 +17,11 @@ env:
   TESTING_PIPELINE_EXECUTION_ROLE: arn:aws:iam::503561418276:role/aws-sam-cli-managed-dev-pipel-PipelineExecutionRole-8ZelUvsUDiJN
   TESTING_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::503561418276:role/aws-sam-cli-managed-dev-p-CloudFormationExecutionRo-Xik3IuCAnyTL
   TESTING_ARTIFACTS_BUCKET: aws-sam-cli-managed-dev-pipeline-r-artifactsbucket-xkn3f3fg8zin
-  # If there are functions with "Image" PackageType in your template,
-  # uncomment the line below and add "--image-repository ${TESTING_IMAGE_REPOSITORY}" to
-  # testing "sam package" and "sam deploy" commands.
-  # TESTING_IMAGE_REPOSITORY = '0123456789.dkr.ecr.region.amazonaws.com/repository-name'
   TESTING_REGION: eu-west-2
   PROD_STACK_NAME: sam-java-ddb-product-api-prod
   PROD_PIPELINE_EXECUTION_ROLE: arn:aws:iam::503561418276:role/aws-sam-cli-managed-prod-pipe-PipelineExecutionRole-aqksMyhWnm11
   PROD_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::503561418276:role/aws-sam-cli-managed-prod--CloudFormationExecutionRo-kXNxTMH8NQQN
   PROD_ARTIFACTS_BUCKET: aws-sam-cli-managed-prod-pipeline--artifactsbucket-kmex6rxriwjz
-  # If there are functions with "Image" PackageType in your template,
-  # uncomment the line below and add "--image-repository ${PROD_IMAGE_REPOSITORY}" to
-  # prod "sam package" and "sam deploy" commands.
-  # PROD_IMAGE_REPOSITORY = '0123456789.dkr.ecr.region.amazonaws.com/repository-name'
   PROD_REGION: eu-west-2
 
 jobs:

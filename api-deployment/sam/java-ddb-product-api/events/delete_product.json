@@ -1,0 +1,11 @@
+{
+  "httpMethod": "DELETE",
+  "path": "/api/v1/products/57e3e2ee-5569-4d49-a4d0-bd067f3008a0",
+  "pathParameters": {
+    "id": "57e3e2ee-5569-4d49-a4d0-bd067f3008a0"
+  },
+  "queryStringParameters": null,
+  "headers": null,
+  "body": null,
+  "isBase64Encoded": false
+}

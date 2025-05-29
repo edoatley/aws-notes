@@ -28,3 +28,11 @@ warm_containers = "EAGER"
 
 [default.local_start_lambda.parameters]
 warm_containers = "EAGER"
+
+[local.deploy.parameters]
+stack_name = "java-ddb-product-api"
+resolve_s3 = true
+s3_prefix = "java-ddb-product-api"
+region = "eu-west-2"
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
