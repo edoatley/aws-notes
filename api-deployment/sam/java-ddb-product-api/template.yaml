@@ -23,7 +23,7 @@ Resources:
       - x86_64
       Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
         Variables:
-          DYNAMO_TABLENAME: "default_table_from_template" # Add this line
+          DYNAMO_TABLENAME: !Ref ProductDDBTable
       Events:
         GetSpecificProduct:
           Type: Api
@@ -58,7 +58,7 @@ Resources:
   ProductDDBTable:
     Type: AWS::Serverless::SimpleTable
     Properties:
-      TableName: products
+      TableName: !Sub "${AWS::StackName}-products"
       PrimaryKey:
         Name: id
         Type: String
@@ -79,9 +79,6 @@ Resources:
       AutoConfigurationEnabled: 'true'
 
 Outputs:
-  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
-  # Find out more about other implicit resources you can reference within SAM
-  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
   ProductApi:
     Description: API Gateway endpoint URL for Prod stage for Product API function
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/v1/products/"
@@ -90,4 +87,4 @@ Outputs:
     Value: !GetAtt ProductApiFunction.Arn
   ProductApiFunctionIamRole:
     Description: Implicit IAM Role created for Product API function
-    Value: !GetAtt ProductApiFunction.Arn
+    Value: !GetAtt ProductApiFunctionRole.Arn
