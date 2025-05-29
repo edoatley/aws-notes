@@ -16,7 +16,6 @@
       * [Step 3 - deploy and check lambda](#step-3---deploy-and-check-lambda)
       * [Step 4 - test the API](#step-4---test-the-api)
       * [Step 5 - update the Hello world API to function like the product API](#step-5---update-the-hello-world-api-to-function-like-the-product-api)
-    * [Amazon API Gateway to AWS Lambda to Amazon DynamoDB - Java](#amazon-api-gateway-to-aws-lambda-to-amazon-dynamodb---java)
 <!-- TOC -->
 
 ## Introduction
@@ -815,9 +814,195 @@ done
 
 #### Step 5 - update the Hello world API to function like the product API
 
-Now we have the hello world version working and we can test what we have it is time to amend our API to meet the contract we had in **boot-ddb-products-api**
+Now we have the hello world version working, and we can test what we have it is time to amend our API to meet the contract we had in **boot-ddb-products-api**
 
-### Amazon API Gateway to AWS Lambda to Amazon DynamoDB - Java
+The first step is to update the code to provide the endpoints we had and write a JUnit test which is all in `api-deployment/sam/java-ddb-product-api/ProductApiFunction`
+and update the [template](./sam/java-ddb-product-api/template.yaml) to add the different paths:
 
-https://serverlessland.com/patterns/apigw-lambda-dynamodb-sam-java
-https://github.com/aws-samples/serverless-patterns/tree/main/apigw-lambda-dynamodb-sam-java
+```yaml
+      Events:
+        GetSpecificProduct:
+          Type: Api
+          Properties:
+            Path: /api/v1/products/{id}
+            Method: get
+        GetAllProducts:
+          Type: Api
+          Properties:
+            Path: /api/v1/products
+            Method: get
+        AddNewProduct:
+          Type: Api
+          Properties:
+            Path: /api/v1/products
+            Method: post
+        UpdateProduct:
+          Type: Api
+          Properties:
+            Path: /api/v1/products/{id}
+            Method: put
+        DeleteProduct:
+          Type: Api
+          Properties:
+            Path: /api/v1/products/{id}
+            Method: delete
+```
+
+and define the table and IAM role:
+
+```yaml
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ProductDDBTable
+
+  ProductDDBTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: products
+      PrimaryKey:
+        Name: id
+        Type: String
+```
+
+With the unit tests working and the template defined we can test locally by running `sam local invoke` which is scripted
+in [local-test.sh](./sam/java-ddb-product-api/scripts/local-test.sh) which gives the following output (cleaned for clarity):
+
+```output
+  ~/source/aws-notes/api-deployment/sam/java-ddb-product-api   feature/sam-hello-world ⇡2 +5 !4 ❯ ./scripts/local-test.sh                                                                                                                                                                      47s  17:04:30
+Building SAM application from: /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api                                                                                                                                                                                                             
+
+Build Succeeded
+
+Built Artifacts  : .aws-sam/build
+Built Template   : .aws-sam/build/template.yaml
+
+---------------------------------------------------------------------
+Initial scan of DynamoDB table: products-local (first 5 items)
+{"description":{"S":"An updated test product"},"id":{"S":"test-id-x"},"price":{"N":"19.99"},"name":{"S":"Updated Product"}}
+{"description":{"S":"Description 2"},"id":{"S":"2"},"price":{"N":"149.99"},"name":{"S":"Product 2"}}
+{"description":{"S":"Test Description"},"id":{"S":"1"},"price":{"N":"99.99"},"name":{"S":"Test Product"}}
+{"description":{"S":"A fantastic product created via POST"},"id":{"S":"fe66d3f5-652f-40e9-9c8e-0d5724cfa394"},"price":{"N":"49.99"},"name":{"S":"Brand New Product"}}
+---------------------------------------------------------------------
+
+Testing POST new product using event file: events/post_product.json
+---------------------------------------------------------------------
+Invoking product.ProductApiFunctionHandler::handleRequest (java21)                                                                                                                                                                                                                                                 
+Mounting /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/.aws-sam/build/ProductApiFunction as /var/task:ro,delegated, inside runtime container                                                                                                                                            
+START RequestId: 3e776bc2-282b-4332-bd85-b321d2f8a3a6 Version: $LATEST
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+{"timestamp":"2025-05-28T16:25:36.463Z","message":"Received POST request for path: /api/v1/products","level":"UNDEFINED","AWSRequestId":"fb68ed97-3b84-424b-96a0-a0bf2ee44a63"}
+END RequestId: fb68ed97-3b84-424b-96a0-a0bf2ee44a63
+REPORT RequestId: fb68ed97-3b84-424b-96a0-a0bf2ee44a63  Init Duration: 0.03 ms  Duration: 3229.50 ms    Billed Duration: 3230 ms        Memory Size: 512 MB     Max Memory Used: 512 MB 
+
+POST Response:
+{"statusCode": 201, "headers": {"Content-Type": "application/json"}, "body": "{\"id\":\"cd8239b8-e4fb-40db-babe-1832c58dec78\",\"name\":\"Brand New Product\",\"description\":\"A fantastic product created via POST\",\"price\":49.99}"}
+---------------------------------------------------------------------
+
+Captured PRODUCT_ID: cd8239b8-e4fb-40db-babe-1832c58dec78
+---------------------------------------------------------------------
+
+Testing GET specific product for ID: cd8239b8-e4fb-40db-babe-1832c58dec78
+---------------------------------------------------------------------
+Reading invoke payload from stdin (you can also pass it from file with --event)                                                                                                                                                                                                                                    
+Invoking product.ProductApiFunctionHandler::handleRequest (java21)                                                                                                                                                                                                                                                 
+Mounting /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/.aws-sam/build/ProductApiFunction as /var/task:ro,delegated, inside runtime container                                                                                                                                            
+START RequestId: 6af4971a-4188-4435-882a-e8460bafeff6 Version: $LATEST
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+{"timestamp":"2025-05-28T16:25:44.273Z","message":"Received GET request for path: /api/v1/products/cd8239b8-e4fb-40db-babe-1832c58dec78","level":"UNDEFINED","AWSRequestId":"7b15bcdd-89f6-4ee9-a4cf-801926238a79"}
+{"timestamp":"2025-05-28T16:25:44.278Z","message":"Fetching product by ID: cd8239b8-e4fb-40db-babe-1832c58dec78","level":"UNDEFINED","AWSRequestId":"7b15bcdd-89f6-4ee9-a4cf-801926238a79"}
+END RequestId: 7b15bcdd-89f6-4ee9-a4cf-801926238a79
+REPORT RequestId: 7b15bcdd-89f6-4ee9-a4cf-801926238a79  Init Duration: 0.05 ms  Duration: 3134.36 ms    Billed Duration: 3135 ms        Memory Size: 512 MB     Max Memory Used: 512 MB 
+{"statusCode": 200, "headers": {"Content-Type": "application/json"}, "body": "{\"id\":\"cd8239b8-e4fb-40db-babe-1832c58dec78\",\"name\":\"Brand New Product\",\"description\":\"A fantastic product created via POST\",\"price\":49.99}"}
+---------------------------------------------------------------------
+
+Testing PUT (update) specific product for ID: cd8239b8-e4fb-40db-babe-1832c58dec78
+---------------------------------------------------------------------
+Reading invoke payload from stdin (you can also pass it from file with --event)                                                                                                                                                                                                                                    
+Invoking product.ProductApiFunctionHandler::handleRequest (java21)                                                                                                                                                                                                                                                 
+Mounting /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/.aws-sam/build/ProductApiFunction as /var/task:ro,delegated, inside runtime container                                                                                                                                            
+START RequestId: 33f75b38-c9fd-46ee-bab6-34e068730d8c Version: $LATEST
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+{"timestamp":"2025-05-28T16:25:52.026Z","message":"Received PUT request for path: /api/v1/products/cd8239b8-e4fb-40db-babe-1832c58dec78","level":"UNDEFINED","AWSRequestId":"dfd1cd59-c5c4-4cdc-8901-4a8f63d0d15e"}
+END RequestId: dfd1cd59-c5c4-4cdc-8901-4a8f63d0d15e
+REPORT RequestId: dfd1cd59-c5c4-4cdc-8901-4a8f63d0d15e  Init Duration: 0.04 ms  Duration: 3377.81 ms    Billed Duration: 3378 ms        Memory Size: 512 MB     Max Memory Used: 512 MB 
+{"statusCode": 200, "headers": {"Content-Type": "application/json"}, "body": "{\"id\":\"cd8239b8-e4fb-40db-babe-1832c58dec78\",\"name\":\"Updated Product\",\"description\":\"An updated test product\",\"price\":19.99}"}
+---------------------------------------------------------------------
+
+Testing GET ALL products using event file: events/get_all_products.json
+---------------------------------------------------------------------
+Invoking product.ProductApiFunctionHandler::handleRequest (java21)                                                                                                                                                                                                                                                 
+Mounting /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/.aws-sam/build/ProductApiFunction as /var/task:ro,delegated, inside runtime container                                                                                                                                            
+START RequestId: 2530bac4-773a-4f13-884d-74dc22ea3684 Version: $LATEST
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+{"timestamp":"2025-05-28T16:25:59.833Z","message":"Received GET request for path: /api/v1/products","level":"UNDEFINED","AWSRequestId":"ae5c9f71-6593-4219-a071-163bf837cd7a"}
+{"timestamp":"2025-05-28T16:25:59.839Z","message":"Fetching all products.","level":"UNDEFINED","AWSRequestId":"ae5c9f71-6593-4219-a071-163bf837cd7a"}
+END RequestId: ae5c9f71-6593-4219-a071-163bf837cd7a
+REPORT RequestId: ae5c9f71-6593-4219-a071-163bf837cd7a  Init Duration: 0.13 ms  Duration: 3152.17 ms    Billed Duration: 3153 ms        Memory Size: 512 MB     Max Memory Used: 512 MB 
+{"statusCode": 200, "headers": {"Content-Type": "application/json"}, "body": "[{\"id\":\"test-id-x\",\"name\":\"Updated Product\",\"description\":\"An updated test product\",\"price\":19.99},{\"id\":\"2\",\"name\":\"Product 2\",\"description\":\"Description 2\",\"price\":149.99},{\"id\":\"1\",\"name\":\"Test Product\",\"description\":\"Test Description\",\"price\":99.99},{\"id\":\"cd8239b8-e4fb-40db-babe-1832c58dec78\",\"name\":\"Updated Product\",\"description\":\"An updated test product\",\"price\":19.99},{\"id\":\"fe66d3f5-652f-40e9-9c8e-0d5724cfa394\",\"name\":\"Brand New Product\",\"description\":\"A fantastic product created via POST\",\"price\":49.99}]"}
+---------------------------------------------------------------------
+
+Testing DELETE specific product for ID: cd8239b8-e4fb-40db-babe-1832c58dec78
+---------------------------------------------------------------------
+Reading invoke payload from stdin (you can also pass it from file with --event)                                                                                                                                                                                                                                    
+Invoking product.ProductApiFunctionHandler::handleRequest (java21)                                                                                                                                                                                                                                                 
+Mounting /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/.aws-sam/build/ProductApiFunction as /var/task:ro,delegated, inside runtime container                                                                                                                                            
+START RequestId: 3343dd91-2691-4752-9332-5a98702c44c6 Version: $LATEST
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+{"timestamp":"2025-05-28T16:26:07.547Z","message":"Received DELETE request for path: /api/v1/products/cd8239b8-e4fb-40db-babe-1832c58dec78","level":"UNDEFINED","AWSRequestId":"f4bafc0a-bf07-4942-a167-bdb7bec55ae5"}
+END RequestId: f4bafc0a-bf07-4942-a167-bdb7bec55ae5
+REPORT RequestId: f4bafc0a-bf07-4942-a167-bdb7bec55ae5  Init Duration: 0.05 ms  Duration: 3109.38 ms    Billed Duration: 3110 ms        Memory Size: 512 MB     Max Memory Used: 512 MB 
+{"statusCode": 204, "headers": {"Content-Type": "application/json"}, "body": ""}
+---------------------------------------------------------------------
+
+Testing GET specific product (after delete) for ID: cd8239b8-e4fb-40db-babe-1832c58dec78
+---------------------------------------------------------------------
+Reading invoke payload from stdin (you can also pass it from file with --event)                                                                                                                                                                                                                                    
+Invoking product.ProductApiFunctionHandler::handleRequest (java21)                                                                                                                                                                                                                                                 
+Mounting /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/.aws-sam/build/ProductApiFunction as /var/task:ro,delegated, inside runtime container                                                                                                                                            
+START RequestId: 04aa625d-e66b-4078-9e80-2e4d64090513 Version: $LATEST
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+{"timestamp":"2025-05-28T16:26:15.211Z","message":"Received GET request for path: /api/v1/products/cd8239b8-e4fb-40db-babe-1832c58dec78","level":"UNDEFINED","AWSRequestId":"a908639e-a09f-4b41-8a31-6c9e1cc88623"}
+{"timestamp":"2025-05-28T16:26:15.217Z","message":"Fetching product by ID: cd8239b8-e4fb-40db-babe-1832c58dec78","level":"UNDEFINED","AWSRequestId":"a908639e-a09f-4b41-8a31-6c9e1cc88623"}
+{"timestamp":"2025-05-28T16:26:16.023Z","message":"Product Not Found: Product not found with id cd8239b8-e4fb-40db-babe-1832c58dec78","level":"UNDEFINED","AWSRequestId":"a908639e-a09f-4b41-8a31-6c9e1cc88623"}
+{"timestamp":"2025-05-28T16:26:16.029Z","message":"Error response: 404 - Product not found with id cd8239b8-e4fb-40db-babe-1832c58dec78","level":"UNDEFINED","AWSRequestId":"a908639e-a09f-4b41-8a31-6c9e1cc88623"}
+END RequestId: a908639e-a09f-4b41-8a31-6c9e1cc88623
+REPORT RequestId: a908639e-a09f-4b41-8a31-6c9e1cc88623  Init Duration: 0.05 ms  Duration: 3092.06 ms    Billed Duration: 3093 ms        Memory Size: 512 MB     Max Memory Used: 512 MB 
+{"statusCode": 404, "headers": {"Content-Type": "application/json"}, "body": "{\"error\": \"Product not found with id cd8239b8-e4fb-40db-babe-1832c58dec78\"}"}
+```
+
+With this working we can commit on our feature branch and let the pipeline deploy our lambda/API gateway resources to AWS. 
+To find the endpoint we can run:
+
+```bash
+# basic details
+region="eu-west-2"
+stage_name="Prod"
+api_base_path="/api/v1/products/"
+
+# get the feature branch name with the feature/ removed
+branch_name=$(git branch --show-current | cut -f2 -d/)
+
+#find a rest api with the name of the feature branch
+rest_api_id=$(aws apigateway get-rest-apis --region eu-west-2 --query "items[?name=='${branch_name}'].id" --output text)
+
+# Construct the base invoke URL for the stage
+invoke_url_stage_base="https://${rest_api_id}.execute-api.${region}.amazonaws.com/${stage_name}"
+
+# construct the full base endpoint for your product API
+full_api_endpoint="${invoke_url_stage_base}${api_base_path}"
+echo $full_api_endpoint
+```
+
+We can then run all the tests for real using [remote-test.sh](./sam/java-ddb-product-api/scripts/remote-test.sh)
