@@ -1006,3 +1006,6 @@ echo $full_api_endpoint
 ```
 
 We can then run all the tests for real using [remote-test.sh](./sam/java-ddb-product-api/scripts/remote-test.sh)
+
+### Lambda using a Spring Cloud Function app
+

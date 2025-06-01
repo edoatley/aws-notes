@@ -1,0 +1,61 @@
+plugins {
+    id 'org.springframework.boot' version "$springBootVersion"
+    id 'io.spring.dependency-management' version "$dependencyManagementVersion"
+    id 'java'
+}
+
+group = 'uk.edoatley.springfunction.product' // Changed group
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = JavaVersion.VERSION_21
+targetCompatibility = JavaVersion.VERSION_21
+
+repositories {
+    mavenCentral()
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+        mavenBom "org.testcontainers:testcontainers-bom:${testContainersVersion}"
+        mavenBom "software.amazon.awssdk:bom:${awsSdkVersion}"
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.cloud:spring-cloud-function-adapter-aws'
+
+    // AWS SDK for DynamoDB
+    implementation 'software.amazon.awssdk:dynamodb'
+    implementation 'software.amazon.awssdk:dynamodb-enhanced'
+
+    // Lombok
+    implementation 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // Events
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.amazonaws:aws-lambda-java-events:3.13.0'
+
+    // Test dependencies
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:localstack'
+}
+
+// By default, Java removes parameter names during compilation for optimization.
+// To retain parameter names, we need to add the '-parameters' compiler argument.
+tasks.withType(JavaCompile) {
+    options.compilerArgs.add('-parameters')
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "PASSED", "FAILED", "SKIPPED"
+        exceptionFormat 'full'
+    }
+    testLogging.showStandardStreams = true
+    testLogging.showExceptions = true
+}
