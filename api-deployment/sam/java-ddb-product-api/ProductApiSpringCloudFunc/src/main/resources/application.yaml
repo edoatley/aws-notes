@@ -13,12 +13,7 @@ spring:
     name: product-api-lambda
   main:
     web-application-type: none # Important for pure Lambda to avoid starting a web server
-
-management: # Actuator endpoints might not be directly accessible in Lambda
-  endpoints:
-    web:
-      exposure:
-        include: "health,info" # Limit exposure for Lambda context
+    lazy-initialization: true
   endpoint:
     health:
       show-details: always

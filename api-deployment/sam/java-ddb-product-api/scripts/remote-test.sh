@@ -9,8 +9,10 @@ api_base_path="/api/v1/products/"
 branch_name=$(git branch --show-current | cut -f2 -d/)
 
 #find a rest api with the name of the feature branch
-rest_api_id=$(aws apigateway get-rest-apis --region eu-west-2 --query "items[?name=='${branch_name}'].id" --output text)
-
+rest_api_id=$1
+if [[ -z "$rest_api_id" ]]; then
+  rest_api_id=$(aws apigateway get-rest-apis --region eu-west-2 --query "items[?name=='${branch_name}'].id" --output text)
+fi
 # Construct the base invoke URL for the stage
 invoke_url_stage_base="https://${rest_api_id}.execute-api.${region}.amazonaws.com/${stage_name}"
 
@@ -38,5 +40,5 @@ echo "Delete the product"
 curl -s -X DELETE "${full_api_endpoint}${uuid}" -o /dev/null -w "%{http_code}" | grep -q 204 || echo "Did not delete product"
 
 echo "Retrieve the deleted product and fetch http status"
-curl -s -X GET "${full_api_endpoint}${uuid}" -o /dev/null -w "%{http_code}" | grep -q 404
+curl -s -X GET "${full_api_endpoint}${uuid}" -o /dev/null -w "%{http_code}" | grep -q 404 || echo "Found supposedly deleted product"
 

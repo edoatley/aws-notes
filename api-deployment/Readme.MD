@@ -27,6 +27,11 @@
       * [Step 7 - Closing notes](#step-7---closing-notes)
         * [JARs](#jars)
         * [Performance](#performance)
+    * [Spring Cloud Function app with SnapStart and `sam local start-api`](#spring-cloud-function-app-with-snapstart-and-sam-local-start-api)
+      * [1. Fixing local performance](#1-fixing-local-performance)
+      * [2. Framework & Code Optimizations (Good Hygiene)](#2-framework--code-optimizations-good-hygiene)
+      * [3. Snapstart for remote performance](#3-snapstart-for-remote-performance)
+      * [4. GraalVM](#4-graalvm)
     * [Direct migration of boot app](#direct-migration-of-boot-app)
 <!-- TOC -->
 
@@ -1456,8 +1461,9 @@ public class ProductApiApplication {
 }
 ```
 
+I'll try the lazy initialization but honestly not sure these will make much of a difference here.
 
-#### 3. Snapstart for remote performance
+#### 3. SnapStart for remote performance
 
 SnapStart is an AWS feature designed specifically to solve the cold start issue for Java-based Lambdas.
 
@@ -1484,13 +1490,72 @@ Resources:
       AutoPublishAlias: live # This is required by SnapStart to manage versions
 ```
 
-With this implemented we can now deploy and run 
+With this implemented we can now deploy the lambda:
+
+```bash
+sam deploy
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                                                                                                                                           
+CloudFormation outputs from deployed stack
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Outputs                                                                                                                                                                                                                                                                                                                                                                                                                                
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Key                 ProductApi                                                                                                                                                                                                                                                                                                                                                                                                         
+Description         API Gateway endpoint URL for Prod stage for Product API function                                                                                                                                                                                                                                                                                                                                                   
+Value               https://nrp0rnk230.execute-api.eu-west-2.amazonaws.com/Prod/api/v1/products/                                                                                                                                                                                                                                                                                                                                       
+
+Key                 ProductApiFunction                                                                                                                                                                                                                                                                                                                                                                                                 
+Description         Product API Lambda Function ARN                                                                                                                                                                                                                                                                                                                                                                                    
+Value               arn:aws:lambda:eu-west-2:503561418276:function:handleProductRequest                                                                                                                                                                                                                                                                                                                                                
+
+Key                 ProductApiFunctionIamRole                                                                                                                                                                                                                                                                                                                                                                                          
+Description         Implicit IAM Role created for Product API function                                                                                                                                                                                                                                                                                                                                                                 
+Value               arn:aws:iam::503561418276:role/java-ddb-product-api-ProductApiFunctionRole-xmeCW5gSTHGF                                                                                                                                                                                                                                                                                                                            
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                                                                                                                                          
+```
+
+We can then test using the API id from the URL (`nrp0rnk230` above):
+
+```bash
+❯ ./scripts/remote-test.sh nrp0rnk230                                                                                                                                                                                                                                                                                        3s  19:48:57
+https://nrp0rnk230.execute-api.eu-west-2.amazonaws.com/Prod/api/v1/products/
+Create a new product
+Product ID is 08ed6f0e-621f-4329-b728-43c715192978
+Retrieve the product
+{
+  "id": "08ed6f0e-621f-4329-b728-43c715192978",
+  "name": "A Product Name",
+  "description": "Description of product",
+  "price": 149.99
+}
+Update the product
+{"id":"08ed6f0e-621f-4329-b728-43c715192978","name":"An UPDATED Product Name","description":"UPDATED desc of product","price":249.99}Retrieve the updated product
+{
+  "id": "08ed6f0e-621f-4329-b728-43c715192978",
+  "name": "An UPDATED Product Name",
+  "description": "UPDATED desc of product",
+  "price": 249.99
+}
+Delete the product
+Retrieve the deleted product and fetch http status
+```
+
+So it seems to be all good - lets check in AWS (CloudWatch) for the performance:
+
+![CloudWatch-SnapStart.png](images/CloudWatch-SnapStart.png)
+
+Note how the first call takes 1s which is still a lot better than local (perhaps due to layers?) but after that the calls
+are quite rapid in the 12-31ms range
 
 #### 4. GraalVM
 
-For the absolute best performance, you can compile your Spring Boot application into a native executable using GraalVM. This does all the classpath scanning and dependency injection at build time, resulting in a binary that starts in milliseconds.
+For the absolute best performance, we can compile the Spring Boot application into a native executable
+using GraalVM. This does all the classpath scanning and dependency injection at build time, resulting in a binary that 
+starts in milliseconds.
 
-This is a more advanced path that requires significant changes to your build process, but it is the ultimate solution for eliminating JVM cold starts. The Spring Boot team has excellent documentation on this if you need to pursue it later.
+However, this is a more advanced path that requires significant changes to the build process, but it is the ultimate 
+solution for eliminating JVM cold starts.
 
 ### Direct migration of boot app
 
