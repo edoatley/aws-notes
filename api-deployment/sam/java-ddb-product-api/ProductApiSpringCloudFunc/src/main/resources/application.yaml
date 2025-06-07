@@ -1,0 +1,19 @@
+dynamo:
+  access-key-id: ${AWS_ACCESS_KEY_ID:} # Will be empty for Lambda IAM role
+  secret-key: ${AWS_SECRET_ACCESS_KEY:} # Will be empty for Lambda IAM role
+  region: eu-west-2 # Or make this configurable via Lambda env var
+  # endpoint: # Leave empty for default AWS endpoint, or set for local testing
+  table-name: ${DYNAMO_TABLENAME:products-local} # Use Lambda env var, with a local default
+
+server: # Not strictly needed for pure Lambda, but Spring Boot might initialize it
+  port: 8080
+
+spring:
+  application:
+    name: product-api-lambda
+  main:
+    web-application-type: none # Important for pure Lambda to avoid starting a web server
+    lazy-initialization: true
+  endpoint:
+    health:
+      show-details: always

@@ -16,6 +16,23 @@
       * [Step 3 - deploy and check lambda](#step-3---deploy-and-check-lambda)
       * [Step 4 - test the API](#step-4---test-the-api)
       * [Step 5 - update the Hello world API to function like the product API](#step-5---update-the-hello-world-api-to-function-like-the-product-api)
+    * [Lambda using a Spring Cloud Function app](#lambda-using-a-spring-cloud-function-app)
+      * [Step 1 - Set up a basic gradle project](#step-1---set-up-a-basic-gradle-project)
+      * [Step 2 - copy the relevant code from `boot-ddb-product-api`](#step-2---copy-the-relevant-code-from-boot-ddb-product-api)
+      * [Step 3 - implement the function / handler](#step-3---implement-the-function--handler)
+      * [Step 4 - Fix up sam template](#step-4---fix-up-sam-template)
+      * [Step 5 - Test locally](#step-5---test-locally)
+      * [Step 6 - Troubleshoot the sam build](#step-6---troubleshoot-the-sam-build)
+      * [Step 7 - Rerun local tests](#step-7---rerun-local-tests)
+      * [Step 7 - Closing notes](#step-7---closing-notes)
+        * [JARs](#jars)
+        * [Performance](#performance)
+    * [Spring Cloud Function app with SnapStart and `sam local start-api`](#spring-cloud-function-app-with-snapstart-and-sam-local-start-api)
+      * [1. Fixing local performance](#1-fixing-local-performance)
+      * [2. Framework & Code Optimizations (Good Hygiene)](#2-framework--code-optimizations-good-hygiene)
+      * [3. Snapstart for remote performance](#3-snapstart-for-remote-performance)
+      * [4. GraalVM](#4-graalvm)
+    * [Direct migration of boot app](#direct-migration-of-boot-app)
 <!-- TOC -->
 
 ## Introduction
@@ -1006,3 +1023,540 @@ echo $full_api_endpoint
 ```
 
 We can then run all the tests for real using [remote-test.sh](./sam/java-ddb-product-api/scripts/remote-test.sh)
+
+### Lambda using a Spring Cloud Function app
+
+#### Step 1 - Set up a basic gradle project
+
+First we create our basic [build.gradle](./sam/java-ddb-product-api/ProductApiSpringCloudFunc/build.gradle)
+
+The key things to note are:
+
+1. the use of the [Spring Cloud Function Adapter](https://docs.spring.io/spring-cloud-function/reference/adapters/aws-intro.html)
+   with the dependency `org.springframework.cloud:spring-cloud-function-adapter-aws`
+2. the use of the various plugins to create:
+```groovy
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version "$springBootVersion"
+    id 'io.spring.dependency-management' version "$dependencyManagementVersion"
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    id 'maven-publish'
+    id 'org.springframework.boot.experimental.thin-launcher' version "1.0.31.RELEASE"
+} 
+```
+
+#### Step 2 - copy the relevant code from `boot-ddb-product-api`
+
+Here we copy the contents of the `boot-ddb-product-api` to `ProductApiSpringCloudFunc` selecting from `src/main/java/com/example/api/`:
+- config (containing DynamoDBConfig.java and DynamoProperties.java)
+- model (containing Product.java)
+- repository (containing ProductRepository.java)
+
+We also moved the `application.yml` and amended a bit setting:
+
+- `dynamo.access-key-id`
+- `dynamo.secret-key`
+- `dynamo.table-name`
+- `spring.main.web-application-type: none`
+
+#### Step 3 - implement the function / handler
+
+Here we create a function within `ProductHandlerFunction` with the signature:
+
+```java
+Function<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent>
+```
+
+This is what Lambda will use to handle requests - see [ProductHandlerFunction](./sam/java-ddb-product-api/ProductApiSpringCloudFunc/src/main/java/uk/edoatley/springfunction/product/api/function/ProductHandlerFunction.java) 
+for the full implementation.
+
+#### Step 4 - Fix up sam template
+
+This just updates the references in `template.yaml`
+
+```yaml
+Resources:
+  ProductApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ProductApiSpringCloudFunc # source code location
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest # spring cloud function hook
+      FunctionName: handleProductRequest # name of function bean method in the app
+
+      Environment: 
+        Variables:
+          DYNAMO_TABLENAME: !Ref ProductDDBTable
+          MAIN_CLASS: uk.edoatley.springfunction.product.api.ProductApiApplication # Important to stop Spring failing to find the main class
+```
+#### Step 5 - Test locally
+
+Here as before we first run some JUnit tests defined in `ProductApiTest` and we run the [local-test.sh(./sam/java-ddb-product-api/scripts/local-test.sh)
+to run the various sam local invoke tests.
+
+#### Step 6 - Troubleshoot the sam build
+
+It is here I experienced some issues with the error:
+
+```bash
+  ~/s/aws-notes/api-deployment/sam/java-ddb-product-api   springf-and-snapstart !3 ?3 ❯ sam build                                                                                                  13:18:52
+Starting Build use cache                                                                                                                                                                                         
+Cache is invalid, running build and copying resources for following functions (ProductApiFunction)                                                                                                               
+Building codeuri: /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/ProductApiSpringCloudFunc runtime: java21 architecture: x86_64 functions: ProductApiFunction                          
+ Running JavaGradleWorkflow:GradleBuild                                                                                                                                                                          
+
+Build Failed
+Error: JavaGradleWorkflow:GradleBuild - Gradle Failed: FAILURE: Build failed with an exception.
+
+* Where:
+Initialization script '/var/folders/_n/60jwg_ln5k78bwvr4p4x1sn40000gn/T/tmprwblnx0q/lambda-build-init.gradle' line: 63
+
+* What went wrong:
+Execution failed for task ':build'.
+> Failed to notify task execution listener.
+   > /var/folders/_n/60jwg_ln5k78bwvr4p4x1sn40000gn/T/tmprwblnx0q/bbaf94c96c13c970ac6b35706c4ad5594def9d6f/build/libs/ProductApiSpringCloudFunc-0.0.1-SNAPSHOT-plain.jar (No such file or directory)
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 17s
+
+  ~/s/aws-notes/a/sam/java-ddb-product-api   springf-and-snapstart !3 ?3 ❯ ls -lh /Users/edoatley/source/aws-notes/api-deployment/sam/java-ddb-product-api/ProductApiSpringCloudFunc/build/libs
+total 70840
+-rw-r--r--@ 1 edoatley  staff    34M Jun  7 13:12 ProductApiSpringCloudFunc-0.0.1-SNAPSHOT-aws.jar
+-rw-r--r--@ 1 edoatley  staff    23K Jun  7 13:12 ProductApiSpringCloudFunc-0.0.1-SNAPSHOT.jar
+```
+
+This was despite following the [official Spring Cloud documentation](https://docs.spring.io/spring-cloud-function/reference/adapters/aws-intro.html)
+
+To resolve this was relatively simple in the end I just needed to configure the thinJar task to use plain as the qualifier for the
+jar file:
+
+```groovy
+thinJar {
+    archiveClassifier = 'plain'
+}
+```
+
+with this in place it all worked
+
+#### Step 7 - Rerun local tests
+
+With the build fixed the lcoal tests worked as expected with the following selected output:
+
+```bash
+
+Testing POST new product using event file: events/post_product.json
+
+2025-06-07T12:59:30.705Z  INFO 12 --- [product-api-lambda] [           main] o.s.c.f.a.aws.CustomRuntimeInitializer   : AWS Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker
+2025-06-07T12:59:30.714Z  INFO 12 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Starting ProductApiApplication using Java 21.0.6 with PID 12 (/var/task started by root in /var/task)
+2025-06-07T12:59:30.715Z  INFO 12 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : No active profile set, falling back to 1 default profile: "default"
+2025-06-07T12:59:32.011Z  WARN 12 --- [product-api-lambda] [           main] u.e.s.product.api.config.DynamoDBConfig  : ========= Using static credentials for DynamoDB client =========
+2025-06-07T12:59:33.308Z  WARN 12 --- [product-api-lambda] [           main] u.e.s.p.a.repository.ProductRepository   : ========= Using DynamoDB table: products-local =========
+2025-06-07T12:59:33.821Z  INFO 12 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Started ProductApiApplication in 4.315 seconds (process running for 5.19)
+2025-06-07T12:59:33.827Z  INFO 12 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Locating function: 'null'
+2025-06-07T12:59:33.829Z  WARN 12 --- [product-api-lambda] [           main] c.f.c.c.BeanFactoryAwareFunctionRegistry : Failed to locate function 'handleProductRequest' for function definition 'handleProductRequest'. Returning null.
+2025-06-07T12:59:33.837Z  INFO 12 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Located function: 'handleProductRequest'
+2025-06-07T12:59:33.925Z  INFO 12 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.AWSLambdaUtils       : Received: {"httpMethod":"POST","path":"/api/v1/products","queryStringParameters":null,"headers":{"Content-Type":"application/json"},"body":"{\"name\":\"Brand New Product\",\"description\":\"A fantastic product created via POST\",\"price\":49.99}","isBase64Encoded":false}
+2025-06-07T12:59:34.321Z  INFO 12 --- [product-api-lambda] [           main] u.e.s.p.a.f.ProductHandlerFunction       : Received POST request for path: /api/v1/products with id: null
+END RequestId: 1576b14a-4aa7-40bb-8c81-af85b5108f65
+REPORT RequestId: 1576b14a-4aa7-40bb-8c81-af85b5108f65  Init Duration: 0.06 ms  Duration: 6771.17 ms    Billed Duration: 6772 ms        Memory Size: 1024 MB    Max Memory Used: 1024 MB        
+POST Response:
+{"statusCode": 201, "headers": {"Content-Type": "application/json"}, "multiValueHeaders": null, "body": "{\"id\":\"e7c9bd93-054d-43fc-af27-3ccf844bffbb\",\"name\":\"Brand New Product\",\"description\":\"A fantastic product created via POST\",\"price\":49.99}", "isBase64Encoded": null}
+---------------------------------------------------------------------
+
+---------------------------------------------------------------------
+Captured PRODUCT_ID: e7c9bd93-054d-43fc-af27-3ccf844bffbb
+---------------------------------------------------------------------
+
+Testing GET specific product for ID: e7c9bd93-054d-43fc-af27-3ccf844bffbb
+
+2025-06-07T12:59:41.941Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.a.aws.CustomRuntimeInitializer   : AWS Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker
+2025-06-07T12:59:41.959Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Starting ProductApiApplication using Java 21.0.6 with PID 11 (/var/task started by root in /var/task)
+2025-06-07T12:59:41.961Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : No active profile set, falling back to 1 default profile: "default"
+2025-06-07T12:59:43.148Z  WARN 11 --- [product-api-lambda] [           main] u.e.s.product.api.config.DynamoDBConfig  : ========= Using static credentials for DynamoDB client =========
+2025-06-07T12:59:44.198Z  WARN 11 --- [product-api-lambda] [           main] u.e.s.p.a.repository.ProductRepository   : ========= Using DynamoDB table: products-local =========
+2025-06-07T12:59:44.678Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Started ProductApiApplication in 3.814 seconds (process running for 4.622)
+2025-06-07T12:59:44.685Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Locating function: 'null'
+2025-06-07T12:59:44.687Z  WARN 11 --- [product-api-lambda] [           main] c.f.c.c.BeanFactoryAwareFunctionRegistry : Failed to locate function 'handleProductRequest' for function definition 'handleProductRequest'. Returning null.
+2025-06-07T12:59:44.696Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Located function: 'handleProductRequest'
+2025-06-07T12:59:44.783Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.AWSLambdaUtils       : Received: {"httpMethod":"GET","path":"/api/v1/products/e7c9bd93-054d-43fc-af27-3ccf844bffbb","pathParameters":{"id":"e7c9bd93-054d-43fc-af27-3ccf844bffbb"},"queryStringParameters":null,"headers":null,"body":null,"isBase64Encoded":false}
+2025-06-07T12:59:44.962Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.p.a.f.ProductHandlerFunction       : Received GET request for path: /api/v1/products/e7c9bd93-054d-43fc-af27-3ccf844bffbb with id: e7c9bd93-054d-43fc-af27-3ccf844bffbb
+END RequestId: fffc2a23-512d-43d0-a893-b33693ba0995
+REPORT RequestId: fffc2a23-512d-43d0-a893-b33693ba0995  Init Duration: 0.04 ms  Duration: 5765.17 ms    Billed Duration: 5766 ms        Memory Size: 1024 MB    Max Memory Used: 1024 MB        
+{"statusCode": 200, "headers": {"Content-Type": "application/json"}, "multiValueHeaders": null, "body": "{\"id\":\"e7c9bd93-054d-43fc-af27-3ccf844bffbb\",\"name\":\"Brand New Product\",\"description\":\"A fantastic product created via POST\",\"price\":49.99}", "isBase64Encoded": null}
+---------------------------------------------------------------------
+
+Testing PUT (update) specific product for ID: e7c9bd93-054d-43fc-af27-3ccf844bffbb
+
+2025-06-07T12:59:52.262Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.a.aws.CustomRuntimeInitializer   : AWS Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker
+2025-06-07T12:59:52.282Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Starting ProductApiApplication using Java 21.0.6 with PID 11 (/var/task started by root in /var/task)
+2025-06-07T12:59:52.283Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : No active profile set, falling back to 1 default profile: "default"
+2025-06-07T12:59:53.539Z  WARN 11 --- [product-api-lambda] [           main] u.e.s.product.api.config.DynamoDBConfig  : ========= Using static credentials for DynamoDB client =========
+2025-06-07T12:59:54.562Z  WARN 11 --- [product-api-lambda] [           main] u.e.s.p.a.repository.ProductRepository   : ========= Using DynamoDB table: products-local =========
+2025-06-07T12:59:55.090Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Started ProductApiApplication in 3.919 seconds (process running for 4.719)
+2025-06-07T12:59:55.096Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Locating function: 'null'
+2025-06-07T12:59:55.100Z  WARN 11 --- [product-api-lambda] [           main] c.f.c.c.BeanFactoryAwareFunctionRegistry : Failed to locate function 'handleProductRequest' for function definition 'handleProductRequest'. Returning null.
+2025-06-07T12:59:55.112Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Located function: 'handleProductRequest'
+2025-06-07T12:59:55.196Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.AWSLambdaUtils       : Received: {"httpMethod":"PUT","path":"/api/v1/products/e7c9bd93-054d-43fc-af27-3ccf844bffbb","pathParameters":{"id":"e7c9bd93-054d-43fc-af27-3ccf844bffbb"},"queryStringParameters":null,"headers":{"Content-Type":"application/json"},"body":"{\"id\":\"57e3e2ee-5569-4d49-a4d0-bd067f3008a0\",\"name\":\"Updated Product\",\"description\":\"An updated test product\",\"price\":19.99}","isBase64Encoded":false}
+2025-06-07T12:59:55.387Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.p.a.f.ProductHandlerFunction       : Received PUT request for path: /api/v1/products/e7c9bd93-054d-43fc-af27-3ccf844bffbb with id: e7c9bd93-054d-43fc-af27-3ccf844bffbb
+END RequestId: 5bb57292-2a18-483e-b26b-5136bcde1f13
+REPORT RequestId: 5bb57292-2a18-483e-b26b-5136bcde1f13  Init Duration: 0.05 ms  Duration: 5957.59 ms    Billed Duration: 5958 ms        Memory Size: 1024 MB    Max Memory Used: 1024 MB        
+{"statusCode": 200, "headers": {"Content-Type": "application/json"}, "multiValueHeaders": null, "body": "{\"id\":\"e7c9bd93-054d-43fc-af27-3ccf844bffbb\",\"name\":\"Updated Product\",\"description\":\"An updated test product\",\"price\":19.99}", "isBase64Encoded": null}
+---------------------------------------------------------------------
+
+Testing GET ALL products using event file: events/get_all_products.json
+
+2025-06-07T13:00:02.923Z  INFO 10 --- [product-api-lambda] [           main] o.s.c.f.a.aws.CustomRuntimeInitializer   : AWS Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker
+2025-06-07T13:00:02.942Z  INFO 10 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Starting ProductApiApplication using Java 21.0.6 with PID 10 (/var/task started by root in /var/task)
+2025-06-07T13:00:02.943Z  INFO 10 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : No active profile set, falling back to 1 default profile: "default"
+2025-06-07T13:00:04.098Z  WARN 10 --- [product-api-lambda] [           main] u.e.s.product.api.config.DynamoDBConfig  : ========= Using static credentials for DynamoDB client =========
+2025-06-07T13:00:05.125Z  WARN 10 --- [product-api-lambda] [           main] u.e.s.p.a.repository.ProductRepository   : ========= Using DynamoDB table: products-local =========
+2025-06-07T13:00:05.618Z  INFO 10 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Started ProductApiApplication in 3.741 seconds (process running for 4.585)
+2025-06-07T13:00:05.625Z  INFO 10 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Locating function: 'null'
+2025-06-07T13:00:05.627Z  WARN 10 --- [product-api-lambda] [           main] c.f.c.c.BeanFactoryAwareFunctionRegistry : Failed to locate function 'handleProductRequest' for function definition 'handleProductRequest'. Returning null.
+2025-06-07T13:00:05.638Z  INFO 10 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Located function: 'handleProductRequest'
+2025-06-07T13:00:05.721Z  INFO 10 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.AWSLambdaUtils       : Received: {"httpMethod":"GET","path":"/api/v1/products","queryStringParameters":null,"headers":null,"body":null,"isBase64Encoded":false}
+2025-06-07T13:00:05.903Z  INFO 10 --- [product-api-lambda] [           main] u.e.s.p.a.f.ProductHandlerFunction       : Received GET request for path: /api/v1/products with id: null
+END RequestId: 1c4993e0-3685-4d6e-b6cb-66d6c9c31f40
+REPORT RequestId: 1c4993e0-3685-4d6e-b6cb-66d6c9c31f40  Init Duration: 0.04 ms  Duration: 5738.06 ms    Billed Duration: 5739 ms        Memory Size: 1024 MB    Max Memory Used: 1024 MB        
+{"statusCode": 200, "headers": {"Content-Type": "application/json"}, "multiValueHeaders": null, "body": "[{\"id\":\"test-id-x\",\"name\":\"Updated Product\",\"description\":\"An updated test product\",\"price\":19.99},{\"id\":\"2\",\"name\":\"Product 2\",\"description\":\"Description 2\",\"price\":149.99},{\"id\":\"1\",\"name\":\"Test Product\",\"description\":\"Test Description\",\"price\":99.99},{\"id\":\"fe66d3f5-652f-40e9-9c8e-0d5724cfa394\",\"name\":\"Brand New Product\",\"description\":\"A fantastic product created via POST\",\"price\":49.99},{\"id\":\"e7c9bd93-054d-43fc-af27-3ccf844bffbb\",\"name\":\"Updated Product\",\"description\":\"An updated test product\",\"price\":19.99}]", "isBase64Encoded": null}
+---------------------------------------------------------------------
+
+Testing DELETE specific product for ID: e7c9bd93-054d-43fc-af27-3ccf844bffbb
+
+2025-06-07T13:00:14.151Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.a.aws.CustomRuntimeInitializer   : AWS Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker
+2025-06-07T13:00:14.162Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Starting ProductApiApplication using Java 21.0.6 with PID 11 (/var/task started by root in /var/task)
+2025-06-07T13:00:14.163Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : No active profile set, falling back to 1 default profile: "default"
+2025-06-07T13:00:15.444Z  WARN 11 --- [product-api-lambda] [           main] u.e.s.product.api.config.DynamoDBConfig  : ========= Using static credentials for DynamoDB client =========
+2025-06-07T13:00:16.580Z  WARN 11 --- [product-api-lambda] [           main] u.e.s.p.a.repository.ProductRepository   : ========= Using DynamoDB table: products-local =========
+2025-06-07T13:00:17.135Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Started ProductApiApplication in 4.296 seconds (process running for 5.117)
+2025-06-07T13:00:17.143Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Locating function: 'null'
+2025-06-07T13:00:17.147Z  WARN 11 --- [product-api-lambda] [           main] c.f.c.c.BeanFactoryAwareFunctionRegistry : Failed to locate function 'handleProductRequest' for function definition 'handleProductRequest'. Returning null.
+2025-06-07T13:00:17.158Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Located function: 'handleProductRequest'
+2025-06-07T13:00:17.271Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.AWSLambdaUtils       : Received: {"httpMethod":"DELETE","path":"/api/v1/products/e7c9bd93-054d-43fc-af27-3ccf844bffbb","pathParameters":{"id":"e7c9bd93-054d-43fc-af27-3ccf844bffbb"},"queryStringParameters":null,"headers":null,"body":null,"isBase64Encoded":false}
+2025-06-07T13:00:17.466Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.p.a.f.ProductHandlerFunction       : Received DELETE request for path: /api/v1/products/e7c9bd93-054d-43fc-af27-3ccf844bffbb with id: e7c9bd93-054d-43fc-af27-3ccf844bffbb
+END RequestId: feb98f45-342a-4905-8d97-d1109c81f87b
+REPORT RequestId: feb98f45-342a-4905-8d97-d1109c81f87b  Init Duration: 0.17 ms  Duration: 6420.73 ms    Billed Duration: 6421 ms        Memory Size: 1024 MB    Max Memory Used: 1024 MB        
+{"statusCode": 204, "headers": {"Content-Type": "application/json"}, "multiValueHeaders": null, "body": "", "isBase64Encoded": null}
+---------------------------------------------------------------------
+
+Testing GET specific product (after delete) for ID: e7c9bd93-054d-43fc-af27-3ccf844bffbb
+
+2025-06-07T13:00:25.905Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.a.aws.CustomRuntimeInitializer   : AWS Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker
+2025-06-07T13:00:25.919Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Starting ProductApiApplication using Java 21.0.6 with PID 11 (/var/task started by root in /var/task)
+2025-06-07T13:00:25.921Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : No active profile set, falling back to 1 default profile: "default"
+2025-06-07T13:00:27.173Z  WARN 11 --- [product-api-lambda] [           main] u.e.s.product.api.config.DynamoDBConfig  : ========= Using static credentials for DynamoDB client =========
+2025-06-07T13:00:28.383Z  WARN 11 --- [product-api-lambda] [           main] u.e.s.p.a.repository.ProductRepository   : ========= Using DynamoDB table: products-local =========
+2025-06-07T13:00:28.890Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Started ProductApiApplication in 4.145 seconds (process running for 5.088)
+2025-06-07T13:00:28.896Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Locating function: 'null'
+2025-06-07T13:00:28.899Z  WARN 11 --- [product-api-lambda] [           main] c.f.c.c.BeanFactoryAwareFunctionRegistry : Failed to locate function 'handleProductRequest' for function definition 'handleProductRequest'. Returning null.
+2025-06-07T13:00:28.908Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.FunctionInvoker      : Located function: 'handleProductRequest'
+2025-06-07T13:00:28.986Z  INFO 11 --- [product-api-lambda] [           main] o.s.c.f.adapter.aws.AWSLambdaUtils       : Received: {"httpMethod":"GET","path":"/api/v1/products/e7c9bd93-054d-43fc-af27-3ccf844bffbb","pathParameters":{"id":"e7c9bd93-054d-43fc-af27-3ccf844bffbb"},"queryStringParameters":null,"headers":null,"body":null,"isBase64Encoded":false}
+2025-06-07T13:00:29.169Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.p.a.f.ProductHandlerFunction       : Received GET request for path: /api/v1/products/e7c9bd93-054d-43fc-af27-3ccf844bffbb with id: e7c9bd93-054d-43fc-af27-3ccf844bffbb
+END RequestId: a975f70c-ae17-4c3f-a184-7ea3b40a1fcc
+REPORT RequestId: a975f70c-ae17-4c3f-a184-7ea3b40a1fcc  Init Duration: 0.06 ms  Duration: 6184.09 ms    Billed Duration: 6185 ms        Memory Size: 1024 MB    Max Memory Used: 1024 MB        
+{"statusCode": 404, "headers": {"Content-Type": "application/json"}, "multiValueHeaders": null, "body": "{\"error\":\"Product not found\"}", "isBase64Encoded": null}
+---------------------------------------------------------------------
+
+All local tests completed.
+```
+
+#### Step 7 - Closing notes
+
+Two things to cover off here
+
+1. Jar challenges / explanations
+2. Performance
+
+##### JARs
+
+Let's break down the two JARs the build now creates (...-plain.jar and ...-aws.jar), why they are different, and the specific role each one plays in the ecosystem of Spring Boot, Lambda, and the SAM CLI.
+
+1. The "Fat" JAR (e.g., ProductApiSpringCloudFunc-0.0.1-SNAPSHOT-aws.jar)
+
+This is the traditional, self-contained "uber-jar" created by the ShadowJar plugin.
+
+- **What's inside?** It contains everything. Your application's compiled .class files are bundled together with all the dependency .class files from every library you need (Spring Boot, Spring Cloud Function, Jackson, Netty, etc.).
+- **Purpose:** Its primary purpose is to be simple and portable. You can take this single JAR file, put it on any machine with a Java runtime, and execute it with a simple java -jar <file-name>.jar command. Everything it needs to run is already inside it.
+- **The Downside for Lambda**: While simple, this approach has drawbacks for a serverless platform like Lambda:
+        Large Size: A typical Spring Boot fat JAR can be 50-100 MB or more. Every time you change a single line of your own code, you have to re-upload this entire large package.
+        Slower "Cold Starts": When a Lambda function is invoked for the first time (or after being idle), it experiences a "cold start." The Lambda service has to download your deployment package and initialize the environment. Downloading and unzipping a large 80MB file takes significantly more time than a 100KB file, contributing to slower startup performance.
+  
+2. The "Thin" JAR (e.g., ProductApiSpringCloudFunc-0.0.1-SNAPSHOT-plain.jar)
+
+This is the lightweight JAR created by the Thin-Launcher plugin, which you configured to have the -plain classifier.
+
+- **What's inside?** It contains only your application's own code. It does not contain any of the Spring Boot or other third-party dependencies. It simply holds the unique business logic that you have written.
+- **Purpose:** Its purpose is to separate your code from its dependencies. This separation is the key to high-performance serverless deployments.
+
+How They Work Together with Lambda and SAM?
+
+This is where the magic happens. The two-JAR strategy is a best practice specifically designed to overcome the downsides 
+of the "fat" JAR on Lambda.
+
+1. **App Code (The Thin JAR)**: The `sam build` command is specifically designed to recognize this pattern. It sees the small 
+`...-plain.jar` and knows this is the core function code. Because it's tiny, deploying updates to your business logic is incredibly fast.
+2. **The Dependencies (Lambda Layers)**: So where do the dependencies go? They are packaged into an AWS Lambda Layer. A Layer 
+is a separate .zip file containing libraries that can be attached to one or more Lambda functions.
+
+Here’s the workflow that SAM CLI enables:
+
+- During the sam build process, SAM examines your project to determine all its dependencies (Spring Boot, etc.).
+- It bundles all those dependency JARs into a separate package, which is then deployed as a Lambda Layer.
+- It bundles your thin JAR (...-plain.jar) as the main function code.
+- Finally, it automatically "attaches" the dependency Layer to your function.
+
+
+##### Performance
+
+As you can see in [Step 7 - Rerun local tests](#step-7---rerun-local-tests) the tests pass but are very very slow!
+
+The ProductApiFunction performance was typically:
+
+```text
+Init Duration: 0.04 ms  Duration: 3377.81 ms    Billed Duration: 3378 ms
+```
+
+Whereas here with `ProductApiSpringCloudFunc` we see:
+
+```text
+ Init Duration: 0.06 ms Duration: 6184.09 ms Billed Duration: 6185 ms
+```
+
+We also see in the log the statement:
+
+```text
+2025-06-07T13:00:28.890Z  INFO 11 --- [product-api-lambda] [           main] u.e.s.product.api.ProductApiApplication  : Started ProductApiApplication in 4.145 seconds (process running for 5.088)
+```
+
+So 4 seconds of 'cold start'. This line tells us that of the total 6.2-second duration, over 4 seconds were spent just starting the Spring Boot application context. This process involves:
+
+- Scanning your classpath for components (@Service, @Repository, etc.)
+- Creating and wiring all the necessary beans (Dependency Injection)
+- Processing configurations
+- Setting up the DynamoDB client
+
+The performance is consistently bad as with `sam local invoke`, you are simulating a cold start every single time you run the command
+
+We will try to address this next with SnapStart
+
+### Spring Cloud Function app with SnapStart and `sam local start-api`
+
+As we saw in the attempt above the performance can be dreadful both locally and likely on AWS. We can fix this though
+
+#### 1. Fixing local performance
+
+We will amend our tests so that they do not need a cold start each time by running:
+
+```bash
+sam local start-api
+```
+
+I updated the original test script to do this in [local-test-api.sh](./sam/java-ddb-product-api/scripts/local-test-api.sh)
+amd these run much faster:
+
+```bash
+Starting SAM local API in background...
+...
+SAM local API should be ready.
+---------------------------------------------------------------------
+
+Testing POST new product using event file: events/post_product.json
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products                                                                                                                                                                                                                                                                                                                                                                            
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "POST /api/v1/products HTTP/1.1" 201 -
+POST Response:
+{
+  "id": "730847a0-2611-4cbb-8c69-a8c8133520fb",
+  "name": "Brand New Product",
+  "description": "A fantastic product created via POST",
+  "price": 49.99
+}
+
+---------------------------------------------------------------------
+Captured PRODUCT_ID: 730847a0-2611-4cbb-8c69-a8c8133520fb
+---------------------------------------------------------------------
+
+Testing GET specific product for ID: 730847a0-2611-4cbb-8c69-a8c8133520fb
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb                                                                                                                                                                                                                                                                                                                                                                         
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "GET /api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb HTTP/1.1" 200 -
+{
+  "id": "730847a0-2611-4cbb-8c69-a8c8133520fb",
+  "name": "Brand New Product",
+  "description": "A fantastic product created via POST",
+  "price": 49.99
+}
+---------------------------------------------------------------------
+
+Testing PUT (update) specific product for ID: 730847a0-2611-4cbb-8c69-a8c8133520fb
+Using request body from: events/put_products.json
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb                                                                                                                                                                                                                                                                                                                                                                         
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "PUT /api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb HTTP/1.1" 200 -
+{
+  "id": "730847a0-2611-4cbb-8c69-a8c8133520fb",
+  "name": "Updated Product",
+  "description": "An updated test product",
+  "price": 19.99
+}
+---------------------------------------------------------------------
+
+Testing GET ALL products
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products                                                                                                                                                                                                                                                                                                                                                                         
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "GET /api/v1/products HTTP/1.1" 200 -
+[
+  {
+    "id": "test-id-x",
+    "name": "Updated Product",
+    "description": "An updated test product",
+    "price": 19.99
+  },
+  ...
+  {
+    "id": "58134534-88e5-4cfc-885a-921e21d87b8c",
+    "name": "Brand New Product",
+    "description": "A fantastic product created via POST",
+    "price": 49.99
+  }
+]
+---------------------------------------------------------------------
+
+Testing DELETE specific product for ID: 730847a0-2611-4cbb-8c69-a8c8133520fb
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb                                                                                                                                                                                                                                                                                                                                                                         
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "DELETE /api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb HTTP/1.1" 204 -
+DELETE request sent, response body is empty (as expected for 204 No Content).
+---------------------------------------------------------------------
+
+Testing GET specific product (after delete) for ID: 730847a0-2611-4cbb-8c69-a8c8133520fb
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb                                                                                                                                                                                                                                                                                                                                                                               
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "GET /api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb HTTP/1.1" 404 -
+{
+  "error": "Product not found"
+}
+---------------------------------------------------------------------
+
+All local tests completed.
+```
+
+#### 2. Framework & Code Optimizations (Good Hygiene)
+
+a) Enable Lazy Initialization
+
+```properties
+spring.main.lazy-initialization=true
+```
+
+b) Reduce Component Scanning
+
+Ensure Spring isn't scanning unnecessary packages. Be explicit about where your functions, configurations, and components are.
+For example:
+
+```java
+// Be as specific as possible in your scanBasePackages
+@SpringBootApplication(scanBasePackages = "com.example.serverless.product.api")
+public class ProductApiApplication {
+    // ...
+}
+```
+
+I'll try the lazy initialization but honestly not sure these will make much of a difference here.
+
+#### 3. SnapStart for remote performance
+
+SnapStart is an AWS feature designed specifically to solve the cold start issue for Java-based Lambdas.
+
+**How it Works:**
+
+Instead of starting your application from scratch on every cold start, SnapStart does the following:
+
+- When you deploy your function, AWS initializes it once—letting Spring Boot do its full 4-second startup.
+- It then takes a snapshot of the entire memory and disk state of the initialized function and encrypts it.
+- When a cold start request comes in, Lambda doesn't run your code from the beginning. It simply resumes the function from the saved snapshot, which is dramatically faster (often reducing startup time by up to 90%).
+
+**How to Implement It:**
+
+This is purely a configuration change in your `template.yaml` file. It requires no code changes just this:
+
+```yaml
+Resources:
+  ProductApiFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      ...
+      SnapStart:
+        ApplyOn: PublishedVersions # Enable SnapStart for published versions of the function
+      AutoPublishAlias: live # This is required by SnapStart to manage versions
+```
+
+With this implemented we can now deploy the lambda:
+
+```bash
+sam deploy
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                                                                                                                                           
+CloudFormation outputs from deployed stack
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Outputs                                                                                                                                                                                                                                                                                                                                                                                                                                
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Key                 ProductApi                                                                                                                                                                                                                                                                                                                                                                                                         
+Description         API Gateway endpoint URL for Prod stage for Product API function                                                                                                                                                                                                                                                                                                                                                   
+Value               https://nrp0rnk230.execute-api.eu-west-2.amazonaws.com/Prod/api/v1/products/                                                                                                                                                                                                                                                                                                                                       
+
+Key                 ProductApiFunction                                                                                                                                                                                                                                                                                                                                                                                                 
+Description         Product API Lambda Function ARN                                                                                                                                                                                                                                                                                                                                                                                    
+Value               arn:aws:lambda:eu-west-2:503561418276:function:handleProductRequest                                                                                                                                                                                                                                                                                                                                                
+
+Key                 ProductApiFunctionIamRole                                                                                                                                                                                                                                                                                                                                                                                          
+Description         Implicit IAM Role created for Product API function                                                                                                                                                                                                                                                                                                                                                                 
+Value               arn:aws:iam::503561418276:role/java-ddb-product-api-ProductApiFunctionRole-xmeCW5gSTHGF                                                                                                                                                                                                                                                                                                                            
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                                                                                                                                          
+```
+
+We can then test using the API id from the URL (`nrp0rnk230` above):
+
+```bash
+❯ ./scripts/remote-test.sh nrp0rnk230                                                                                                                                                                                                                                                                                        3s  19:48:57
+https://nrp0rnk230.execute-api.eu-west-2.amazonaws.com/Prod/api/v1/products/
+Create a new product
+Product ID is 08ed6f0e-621f-4329-b728-43c715192978
+Retrieve the product
+{
+  "id": "08ed6f0e-621f-4329-b728-43c715192978",
+  "name": "A Product Name",
+  "description": "Description of product",
+  "price": 149.99
+}
+Update the product
+{"id":"08ed6f0e-621f-4329-b728-43c715192978","name":"An UPDATED Product Name","description":"UPDATED desc of product","price":249.99}Retrieve the updated product
+{
+  "id": "08ed6f0e-621f-4329-b728-43c715192978",
+  "name": "An UPDATED Product Name",
+  "description": "UPDATED desc of product",
+  "price": 249.99
+}
+Delete the product
+Retrieve the deleted product and fetch http status
+```
+
+So it seems to be all good - lets check in AWS (CloudWatch) for the performance:
+
+![CloudWatch-SnapStart.png](images/CloudWatch-SnapStart.png)
+
+Note how the first call takes 1s which is still a lot better than local (perhaps due to layers?) but after that the calls
+are quite rapid in the 12-31ms range
+
+#### 4. GraalVM
+
+For the absolute best performance, we can compile the Spring Boot application into a native executable
+using GraalVM. This does all the classpath scanning and dependency injection at build time, resulting in a binary that 
+starts in milliseconds.
+
+However, this is a more advanced path that requires significant changes to the build process, but it is the ultimate 
+solution for eliminating JVM cold starts.
+
+### Direct migration of boot app
+
+https://www.baeldung.com/spring-boot-aws-lambda

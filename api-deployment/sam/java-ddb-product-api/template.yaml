@@ -5,7 +5,7 @@ Description: java-ddb-product-api
 Globals:
   Function:
     Timeout: 20
-    MemorySize: 512
+    MemorySize: 2048
     Tracing: Active
     LoggingConfig:
       LogFormat: JSON
@@ -16,14 +16,25 @@ Resources:
   ProductApiFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
-      CodeUri: ProductApiFunction
-      Handler: product.ProductApiFunctionHandler::handleRequest
+# START Values for ProductApiFunction
+#      CodeUri: ProductApiFunction
+#      Handler: product.ProductApiFunctionHandler::handleRequest
+# END Values for ProductApiFunction
+# START Values for ProductApiSpringCloudFunc
+      CodeUri: ProductApiSpringCloudFunc
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+      FunctionName: handleProductRequest
+# END Values for ProductApiSpringCloudFunc
       Runtime: java21
+      SnapStart:
+        ApplyOn: PublishedVersions # Enable SnapStart for published versions of the function
+      AutoPublishAlias: live # This is required by SnapStart to manage versions
       Architectures:
       - x86_64
       Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
         Variables:
           DYNAMO_TABLENAME: !Ref ProductDDBTable
+          MAIN_CLASS: uk.edoatley.springfunction.product.api.ProductApiApplication
       Events:
         GetSpecificProduct:
           Type: Api
