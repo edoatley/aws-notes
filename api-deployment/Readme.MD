@@ -1339,8 +1339,158 @@ The performance is consistently bad as with `sam local invoke`, you are simulati
 
 We will try to address this next with SnapStart
 
+### Spring Cloud Function app with SnapStart and `sam local start-api`
 
-SnapStart
+As we saw in the attempt above the performance can be dreadful both locally and likely on AWS. We can fix this though
+
+#### 1. Fixing local performance
+
+We will amend our tests so that they do not need a cold start each time by running:
+
+```bash
+sam local start-api
+```
+
+I updated the original test script to do this in [local-test-api.sh](./sam/java-ddb-product-api/scripts/local-test-api.sh)
+amd these run much faster:
+
+```bash
+Starting SAM local API in background...
+...
+SAM local API should be ready.
+---------------------------------------------------------------------
+
+Testing POST new product using event file: events/post_product.json
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products                                                                                                                                                                                                                                                                                                                                                                            
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "POST /api/v1/products HTTP/1.1" 201 -
+POST Response:
+{
+  "id": "730847a0-2611-4cbb-8c69-a8c8133520fb",
+  "name": "Brand New Product",
+  "description": "A fantastic product created via POST",
+  "price": 49.99
+}
+
+---------------------------------------------------------------------
+Captured PRODUCT_ID: 730847a0-2611-4cbb-8c69-a8c8133520fb
+---------------------------------------------------------------------
+
+Testing GET specific product for ID: 730847a0-2611-4cbb-8c69-a8c8133520fb
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb                                                                                                                                                                                                                                                                                                                                                                         
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "GET /api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb HTTP/1.1" 200 -
+{
+  "id": "730847a0-2611-4cbb-8c69-a8c8133520fb",
+  "name": "Brand New Product",
+  "description": "A fantastic product created via POST",
+  "price": 49.99
+}
+---------------------------------------------------------------------
+
+Testing PUT (update) specific product for ID: 730847a0-2611-4cbb-8c69-a8c8133520fb
+Using request body from: events/put_products.json
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb                                                                                                                                                                                                                                                                                                                                                                         
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "PUT /api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb HTTP/1.1" 200 -
+{
+  "id": "730847a0-2611-4cbb-8c69-a8c8133520fb",
+  "name": "Updated Product",
+  "description": "An updated test product",
+  "price": 19.99
+}
+---------------------------------------------------------------------
+
+Testing GET ALL products
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products                                                                                                                                                                                                                                                                                                                                                                         
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "GET /api/v1/products HTTP/1.1" 200 -
+[
+  {
+    "id": "test-id-x",
+    "name": "Updated Product",
+    "description": "An updated test product",
+    "price": 19.99
+  },
+  ...
+  {
+    "id": "58134534-88e5-4cfc-885a-921e21d87b8c",
+    "name": "Brand New Product",
+    "description": "A fantastic product created via POST",
+    "price": 49.99
+  }
+]
+---------------------------------------------------------------------
+
+Testing DELETE specific product for ID: 730847a0-2611-4cbb-8c69-a8c8133520fb
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb                                                                                                                                                                                                                                                                                                                                                                         
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "DELETE /api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb HTTP/1.1" 204 -
+DELETE request sent, response body is empty (as expected for 204 No Content).
+---------------------------------------------------------------------
+
+Testing GET specific product (after delete) for ID: 730847a0-2611-4cbb-8c69-a8c8133520fb
+Targeting endpoint: http://127.0.0.1:3000/api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb                                                                                                                                                                                                                                                                                                                                                                               
+2025-06-07 16:19:50 127.0.0.1 - - [07/Jun/2025 16:19:50] "GET /api/v1/products/730847a0-2611-4cbb-8c69-a8c8133520fb HTTP/1.1" 404 -
+{
+  "error": "Product not found"
+}
+---------------------------------------------------------------------
+
+All local tests completed.
+```
+
+#### 2. Framework & Code Optimizations (Good Hygiene)
+
+a) Enable Lazy Initialization
+
+```properties
+spring.main.lazy-initialization=true
+```
+
+b) Reduce Component Scanning
+
+Ensure Spring isn't scanning unnecessary packages. Be explicit about where your functions, configurations, and components are.
+For example:
+
+```java
+// Be as specific as possible in your scanBasePackages
+@SpringBootApplication(scanBasePackages = "com.example.serverless.product.api")
+public class ProductApiApplication {
+    // ...
+}
+```
+
+
+#### 3. Snapstart for remote performance
+
+SnapStart is an AWS feature designed specifically to solve the cold start issue for Java-based Lambdas.
+
+**How it Works:**
+
+Instead of starting your application from scratch on every cold start, SnapStart does the following:
+
+- When you deploy your function, AWS initializes it once—letting Spring Boot do its full 4-second startup.
+- It then takes a snapshot of the entire memory and disk state of the initialized function and encrypts it.
+- When a cold start request comes in, Lambda doesn't run your code from the beginning. It simply resumes the function from the saved snapshot, which is dramatically faster (often reducing startup time by up to 90%).
+
+**How to Implement It:**
+
+This is purely a configuration change in your `template.yaml` file. It requires no code changes just this:
+
+```yaml
+Resources:
+  ProductApiFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      ...
+      SnapStart:
+        ApplyOn: PublishedVersions # Enable SnapStart for published versions of the function
+      AutoPublishAlias: live # This is required by SnapStart to manage versions
+```
+
+With this implemented we can now deploy and run 
+
+#### 4. GraalVM
+
+For the absolute best performance, you can compile your Spring Boot application into a native executable using GraalVM. This does all the classpath scanning and dependency injection at build time, resulting in a binary that starts in milliseconds.
+
+This is a more advanced path that requires significant changes to your build process, but it is the ultimate solution for eliminating JVM cold starts. The Spring Boot team has excellent documentation on this if you need to pursue it later.
 
 ### Direct migration of boot app
 
