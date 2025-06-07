@@ -1,5 +1,7 @@
 #!/bin/bash
 
+function_name=${1:-"ProductApiFunction"}
+
 # Get the directory where the script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 # SAM_PROJECT_ROOT is the parent directory of 'scripts'
@@ -23,7 +25,7 @@ ENV_VARS_FILE="local-env.json"
 REGION="eu-west-2"
 
 echo "---------------------------------------------------------------------"
-DYNAMO_TABLE=$(jq -r '.ProductApiFunction.DYNAMO_TABLENAME' < "${ENV_VARS_FILE}")
+DYNAMO_TABLE=$(jq -r ".$function_name.DYNAMO_TABLENAME" < "${ENV_VARS_FILE}")
 if [ -z "$DYNAMO_TABLE" ] || [ "$DYNAMO_TABLE" == "null" ]; then
     echo "Error: Could not extract DYNAMO_TABLENAME from ${ENV_VARS_FILE}"
     exit 1
@@ -37,7 +39,7 @@ echo ""
 echo "Testing POST new product using event file: $POST_EVENT_FILE"
 echo "Using environment variables from: $ENV_VARS_FILE"
 echo "---------------------------------------------------------------------"
-POST_RESPONSE=$(sam local invoke ProductApiFunction \
+POST_RESPONSE=$(sam local invoke $function_name \
     --event "${POST_EVENT_FILE}" \
     --env-vars "${ENV_VARS_FILE}" \
     --region "${REGION}")
@@ -69,7 +71,7 @@ GET_SPECIFIC_EVENT_JSON=$(jq --arg id "$PRODUCT_ID" \
     '.pathParameters.id = $id | .path = ("/api/v1/products/" + $id)' \
     "${GET_SPECIFIC_EVENT_TEMPLATE_FILE}")
 
-sam local invoke ProductApiFunction \
+sam local invoke $function_name \
     --event - \
     --env-vars "${ENV_VARS_FILE}" \
     --region "${REGION}" <<< "${GET_SPECIFIC_EVENT_JSON}"
@@ -88,9 +90,9 @@ PUT_EVENT_JSON=$(jq --arg id "$PRODUCT_ID" \
     '.pathParameters.id = $id | .path = ("/api/v1/products/" + $id)' \
     "${PUT_EVENT_TEMPLATE_FILE}")
 # Note: The body of PUT_EVENT_TEMPLATE_FILE still has its original ID,
-# but your handler ProductApiFunctionHandler.handlePutRequest correctly sets productToUpdate.setId(productIdFromPath)
+# but your handler $function_nameHandler.handlePutRequest correctly sets productToUpdate.setId(productIdFromPath)
 
-sam local invoke ProductApiFunction \
+sam local invoke $function_name \
     --event - \
     --env-vars "${ENV_VARS_FILE}" \
     --region "${REGION}" <<< "${PUT_EVENT_JSON}"
@@ -102,7 +104,7 @@ echo ""
 echo "Testing GET ALL products using event file: $GET_ALL_EVENT_FILE"
 echo "Using environment variables from: $ENV_VARS_FILE"
 echo "---------------------------------------------------------------------"
-sam local invoke ProductApiFunction \
+sam local invoke $function_name \
     --event "${GET_ALL_EVENT_FILE}" \
     --env-vars "${ENV_VARS_FILE}" \
     --region "${REGION}"
@@ -118,7 +120,7 @@ DELETE_EVENT_JSON=$(jq --arg id "$PRODUCT_ID" \
     '.pathParameters.id = $id | .path = ("/api/v1/products/" + $id)' \
     "${DELETE_EVENT_TEMPLATE_FILE}")
 
-sam local invoke ProductApiFunction \
+sam local invoke $function_name \
     --event - \
     --env-vars "${ENV_VARS_FILE}" \
     --region "${REGION}" <<< "${DELETE_EVENT_JSON}"
@@ -131,7 +133,7 @@ echo "Testing GET specific product (after delete) for ID: ${PRODUCT_ID}"
 echo "Using environment variables from: $ENV_VARS_FILE"
 echo "---------------------------------------------------------------------"
 # We can reuse GET_SPECIFIC_EVENT_JSON from step 2
-sam local invoke ProductApiFunction \
+sam local invoke $function_name \
     --event - \
     --env-vars "${ENV_VARS_FILE}" \
     --region "${REGION}" <<< "${GET_SPECIFIC_EVENT_JSON}" # Uses the same JSON as the earlier GET specific
