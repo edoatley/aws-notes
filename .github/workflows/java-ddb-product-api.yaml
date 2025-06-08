@@ -79,7 +79,7 @@ jobs:
       # Attempt to fix error:
       # Execution failed for task ':thinPom'.
       # > Failed to create parent directory '/tmp/samcli/source/build' when creating directory '/tmp/samcli/source/build/resources/thinPom'
-      - run: sam build --template ${SAM_TEMPLATE} --use-container --mount-with WRITE
+      - run: sam build --template ${SAM_TEMPLATE} --use-container --mount-with WRITE --container-env-var ProductApiFunction:GRADLE_USER_HOME=/tmp/.gradle_cache_build
 
       - name: Assume the testing pipeline user role
         uses: aws-actions/configure-aws-credentials@v4
@@ -116,7 +116,7 @@ jobs:
       # Execution failed for task ':thinPom'.
       # > Failed to create parent directory '/tmp/samcli/source/build' when creating directory '/tmp/samcli/source/build/resources/thinPom'
       - name: Build resources
-        run: sam build --template ${SAM_TEMPLATE} --use-container --mount-with WRITE
+        run: sam build --template ${SAM_TEMPLATE} --use-container --mount-with WRITE --container-env-var ProductApiFunction:GRADLE_USER_HOME=/tmp/.gradle_cache_build
 
       - name: Assume the testing pipeline user role
         uses: aws-actions/configure-aws-credentials@v4

@@ -1,0 +1,85 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version "$springBootVersion"
+    id 'io.spring.dependency-management' version "$dependencyManagementVersion"
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    id 'org.springframework.boot.experimental.thin-launcher' version "1.0.31.RELEASE"
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = JavaVersion.VERSION_17
+
+repositories {
+    mavenCentral()
+}
+
+assemble.dependsOn = [thinJar, shadowJar]
+
+// SAM looks for this qualifier and so needed this to make it work
+thinJar {
+    archiveClassifier = 'plain'
+}
+
+shadowJar.mustRunAfter thinJar
+
+import com.github.jengelman.gradle.plugins.shadow.transformers.*
+
+shadowJar {
+    archiveClassifier = 'aws'
+    manifest {
+        inheritFrom(project.tasks.thinJar.manifest)
+    }
+    // Required for Spring
+    mergeServiceFiles()
+    append 'META-INF/spring.handlers'
+    append 'META-INF/spring.schemas'
+    append 'META-INF/spring.tooling'
+    append 'META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports'
+    append 'META-INF/spring/org.springframework.boot.actuate.autoconfigure.web.ManagementContextConfiguration.imports'
+    transform(PropertiesFileTransformer) {
+        paths = ['META-INF/spring.factories']
+        mergeStrategy = "append"
+    }
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+        mavenBom "org.testcontainers:testcontainers-bom:${testContainersVersion}"
+        mavenBom "software.amazon.awssdk:bom:${awsSdkVersion}"
+    }
+}
+
+dependencies {
+    implementation "com.amazonaws.serverless:aws-serverless-java-container-springboot3:${awsServerlessJavaContainer}"
+    implementation "com.amazonaws.serverless:aws-serverless-java-container-core:${awsServerlessJavaContainer}"
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'software.amazon.awssdk:dynamodb'
+    implementation 'software.amazon.awssdk:dynamodb-enhanced'
+    implementation 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:localstack'
+}
+
+
+// By default, Java removes parameter names during compilation for optimization.
+// To retain parameter names, we need to add the '-parameters' compiler argument.
+// This is important for frameworks like Spring that rely on parameter names for dependency injection.
+tasks.withType(JavaCompile) {
+    options.compilerArgs.add('-parameters')
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "PASSED", "FAILED", "SKIPPED"
+        exceptionFormat 'full'
+    }
+    testLogging.showStandardStreams = true
+    testLogging.showExceptions = true
+}

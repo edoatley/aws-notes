@@ -1,0 +1,23 @@
+dynamo:
+  access-key-id: ${AWS_ACCESS_KEY_ID:}
+  secret-key: ${AWS_SECRET_ACCESS_KEY:}
+  region: eu-west-2
+  # endpoint: your-endpoint
+  table-name: products-local
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: product-api
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+      

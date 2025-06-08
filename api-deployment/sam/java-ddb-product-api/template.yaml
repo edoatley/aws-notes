@@ -21,10 +21,14 @@ Resources:
 #      Handler: product.ProductApiFunctionHandler::handleRequest
 # END Values for ProductApiFunction
 # START Values for ProductApiSpringCloudFunc
-      CodeUri: ProductApiSpringCloudFunc
-      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
-      FunctionName: handleProductRequest
+#      CodeUri: ProductApiSpringCloudFunc
+#      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+#      FunctionName: handleProductRequest
 # END Values for ProductApiSpringCloudFunc
+# START Values for wrapped-boot-ddb-product-api
+      CodeUri: wrapped-boot-ddb-product-api
+      Handler: com.example.api.handler.LambdaHandler::handleRequest
+# END Values for wrapped-boot-ddb-product-api
       Runtime: java21
       SnapStart:
         ApplyOn: PublishedVersions # Enable SnapStart for published versions of the function
@@ -34,7 +38,12 @@ Resources:
       Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
         Variables:
           DYNAMO_TABLENAME: !Ref ProductDDBTable
-          MAIN_CLASS: uk.edoatley.springfunction.product.api.ProductApiApplication
+          # START Values for wrapped-boot-ddb-product-api
+          JAVA_TOOL_OPTIONS: -XX:+TieredCompilation -XX:TieredStopAtLevel=1
+          # END Values for wrapped-boot-ddb-product-api
+          # START Values for ProductApiSpringCloudFunc
+#          MAIN_CLASS: uk.edoatley.springfunction.product.api.ProductApiApplication
+          # END Values for ProductApiSpringCloudFunc
       Events:
         GetSpecificProduct:
           Type: Api

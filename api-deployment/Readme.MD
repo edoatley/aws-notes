@@ -30,9 +30,14 @@
     * [Spring Cloud Function app with SnapStart and `sam local start-api`](#spring-cloud-function-app-with-snapstart-and-sam-local-start-api)
       * [1. Fixing local performance](#1-fixing-local-performance)
       * [2. Framework & Code Optimizations (Good Hygiene)](#2-framework--code-optimizations-good-hygiene)
-      * [3. Snapstart for remote performance](#3-snapstart-for-remote-performance)
+      * [3. SnapStart for remote performance](#3-snapstart-for-remote-performance)
+        * [Aside on memory usage](#aside-on-memory-usage)
       * [4. GraalVM](#4-graalvm)
-    * [Direct migration of boot app](#direct-migration-of-boot-app)
+    * [Direct/Minimalised migration of boot app](#directminimalised-migration-of-boot-app)
+      * [Step 1 - Copy the source Spring Boot app](#step-1---copy-the-source-spring-boot-app)
+      * [Step 2 - Configure 'Shaded' JAR](#step-2---configure-shaded-jar)
+      * [Step 3 -](#step-3---)
+  * [Conclusion](#conclusion)
 <!-- TOC -->
 
 ## Introduction
@@ -1568,6 +1573,67 @@ starts in milliseconds.
 However, this is a more advanced path that requires significant changes to the build process, but it is the ultimate 
 solution for eliminating JVM cold starts.
 
-### Direct migration of boot app
+### Direct/Minimalised migration of boot app
 
-https://www.baeldung.com/spring-boot-aws-lambda
+Here we will follow https://www.baeldung.com/spring-boot-aws-lambda to migrate [boot-ddb-product-api](boot-ddb-product-api)
+
+#### Step 1 - Copy the source Spring Boot app
+
+Firstly copy the [boot-ddb-product-api](boot-ddb-product-api) to [wrapped-boot-ddb-product-api](sam/java-ddb-product-api/wrapped-boot-ddb-product-api)
+excluding scripts and Dockerfile and updating the name in [settings.gradle](sam/java-ddb-product-api/wrapped-boot-ddb-product-api/settings.gradle):
+
+```grooy
+rootProject.name = 'wrapped-boot-ddb-product-api'
+```
+
+We can then run a gradlew clean build to check it all works ok after this.
+
+#### Step 2 - Configure 'Shaded' JAR
+
+The term "shaded JAR" is used to describe a "fat" or "uber" JAR that bundles your application's code along with all of its 
+dependencies into a single JAR file.
+
+To do this we need to bring in some plugins and build script like we did with [ProductApiSpringCloudFunc](./sam/java-ddb-product-api/ProductApiSpringCloudFunc)
+
+The plugins we need are:
+
+```groovy
+    // creates the shaded (fat) jar
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    // creates a thin executable jar with just the application code and register of the dependencies
+    id 'org.springframework.boot.experimental.thin-launcher' version "1.0.31.RELEASE"
+```
+
+Note, thin jars are discussed more [here](https://www.baeldung.com/spring-boot-thin-jar):
+
+> The Spring Boot Thin Launcher is a small library that reads an artifact’s dependencies from a file bundled in the archive itself, downloads them from a Maven repository and finally launches the main class of the application
+> The whole point of thin jars is to avoid bundling the dependencies with the application. However, dependencies don’t magically disappear, they’re simply stored elsewhere.
+
+In our case we want the dependency jars to be in the lambda layer
+
+The full gradle config is like in our Spring Cloud Function example ProductApiSpringCloudFunc
+
+#### Step 3 - create a class that implements a RequestHandler
+
+
+
+## Conclusion
+
+Both ECS and Lamdba offer alternative approaches to running Java applications with different pros and cons
+
+In my experimentation here I have tried the following approaches:
+
+|    | Approach                                                                                                    | Platform | Comments                                                                                                                                                                                                                                                                                 | Link above                                                                                                                              |
+|----|-------------------------------------------------------------------------------------------------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| 1. | Simple approach with public ECS tasks exposed over public IPs                                               | ECS      | Very basic set up mainly to learn about running containers in ECS, would not use in production but relatively simple to implement                                                                                                                                                        | [Simplistic implementation](#simplistic-implementation)                                                                                 |
+| 2. | More realistic ECS deployment with private networking (to/from ECS), and an API Gateway for public exposure | ECS      | Works well and provides a nice way to deploy a containerised application. Use of Fargate allows costs to be minimised and autoscaling.                                                                                                                                                   | [More Private Implementation](#more-private-implementation)                                                                             |
+| 3. | Building the same Product API from the ground up leveraging AWS SAM.                                        | Lambda   | The resulting code here is simple and lightweight compared with later where we try to pull in a Spring Boot application. This is likely harder when the app you are mimicking is not trivial. The sam pipeline capability lets you get building and deploying with automation with ease. | [AWS Serverless Application Model (SAM)](#aws-serverless-application-model-sam)                                                         |
+| 4. | Wrapping (most of) a Spring Boot app with Spring Cloud Functions                                            | Lambda   | Here we kept most of the code except the REST controller logic which was replaced with a function bean and the Spring Cloud Function library. Worked well but with a long cold start.                                                                                                    | [Lambda using a Spring Cloud Function app](#lambda-using-a-spring-cloud-function-app)                                                   |
+| 5. | Using SnapStart to improve the slow cold start of the Spring Cloud Function lambda                          | Lambda   | SnapStart was very effective at improving lambda performance and is crucial for a real world scenario                                                                                                                                                                                    | [Spring Cloud Function app with SnapStart and `sam local start-api`](#spring-cloud-function-app-with-snapstart-and-sam-local-start-api) |
+| 6. | Wrap a Spring Boot application with a container                                                             | Lambda   | Here we wrap the spring boot application ina  container so the app is largely unchange other than pulling in the container library                                                                                                                                                       | [Direct/Minimalised migration of boot app](#directminimalised-migration-of-boot-app)                                                    |
+
+In conclusion, I would say:
+
+1. if you have a very complicated containerised application then approach **2.** is ideal 
+2. approach **5.** could save cost if there is spiky load
+3. for a simple or greenfield app **3.** seems to reduce the code required but of course is not valid if you need Spring Boot abilities.
