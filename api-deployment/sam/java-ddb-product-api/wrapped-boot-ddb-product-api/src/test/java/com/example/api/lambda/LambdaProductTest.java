@@ -13,8 +13,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
 
 import java.io.IOException;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
@@ -109,25 +109,41 @@ public class LambdaProductTest extends AbstractDynamoDbTest {
      * @param httpMethod HTTP method
      * @return AwsProxyRequest as requested
      */
+
     private AwsProxyRequest createRequest(String path, String httpMethod, String body) {
         AwsProxyRequest request = new AwsProxyRequest();
-        // Use SingleValueHeaders for simplicity if you don't need multiple values for the same header key
-        SingleValueHeaders headers = new SingleValueHeaders();
-        request.setHeaders(headers); // Set single-value headers
-
-        // Initialize multiValueHeaders as well, as some internal logic might expect it
-        request.setMultiValueHeaders(new Headers());
-
-
         request.setHttpMethod(httpMethod);
         request.setPath(path);
 
+        Map<String, String> singleValueHeadersMap = new HashMap<>();
+        // Use HashMap for multiValueHeadersMap before converting to Headers type
+        Map<String, List<String>> tempMultiValueHeadersMap = new HashMap<>();
+
         if (body != null) {
             request.setBody(body);
-            // Set Content-Type header for requests with a body (e.g., POST, PUT)
-            headers.put("Content-Type", "application/json");
+            String contentType = "application/json";
+            singleValueHeadersMap.put("Content-Type", contentType);
+            // Ensure the list stored in the map is an ArrayList
+            tempMultiValueHeadersMap.put("Content-Type", new ArrayList<>(Collections.singletonList(contentType)));
         }
 
+        if (singleValueHeadersMap.isEmpty()) {
+            request.setHeaders(null);
+        } else {
+            SingleValueHeaders svHeaders = new SingleValueHeaders();
+            svHeaders.putAll(singleValueHeadersMap);
+            request.setHeaders(svHeaders);
+        }
+
+        if (tempMultiValueHeadersMap.isEmpty()) {
+            request.setMultiValueHeaders(null);
+        } else {
+            Headers mvHeaders = new Headers(); // Headers is a MultiValuedTreeMap
+            mvHeaders.putAll(tempMultiValueHeadersMap);
+            request.setMultiValueHeaders(mvHeaders);
+        }
+
+        // Common request context setup
         request.setMultiValueQueryStringParameters(new MultiValuedTreeMap<>());
         request.setRequestContext(new AwsProxyRequestContext());
         request.getRequestContext().setRequestId(UUID.randomUUID().toString());

@@ -1615,7 +1615,82 @@ The full gradle config is like in our Spring Cloud Function example ProductApiSp
 
 #### Step 3 - create a class that implements a RequestHandler
 
+For this we create a class to proxy lambda requests to the Sping Boot applciation called [LambdaHandler](./sam/java-ddb-product-api/wrapped-boot-ddb-product-api/src/main/java/com/example/api/handler/LambdaHandler.java).
 
+We could potentially also have implemented in a way to asynchronously initialise to improve performance which would make
+the code almost the same:
+
+```java
+public class AsynchronousLambdaHandler implements RequestHandler<AwsProxyRequest, AwsProxyResponse> {
+    private static SpringBootLambdaContainerHandler<AwsProxyRequest, AwsProxyResponse> handler;
+
+    public AsynchronousLambdaHandler() throws ContainerInitializationException {
+        handler = (SpringBootLambdaContainerHandler<AwsProxyRequest, AwsProxyResponse>)
+                new SpringBootProxyHandlerBuilder()
+                        .springBootApplication(ProductApiApplication.class)
+                        .asyncInit()
+                        .buildAndInitialize();
+    }
+
+    @Override
+    public AwsProxyResponse handleRequest(AwsProxyRequest input, Context context) {
+        return handler.proxy(input, context);
+    }
+}
+```
+
+#### Step 4 - run some tests
+
+Here we reran the same tests as from the source Spring Boot app to test the controller but also wrote [LambdaProductTest](./sam/java-ddb-product-api/wrapped-boot-ddb-product-api/src/test/java/com/example/api/lambda/LambdaProductTest.java)
+to check that we can send Lambda events to the app and it proxy them to the controller.
+
+The test results look good:
+
+![Test-Results.png](images/Test-Results.png)
+
+#### Step 5 - update the sam template and build
+
+For this there are few changes to the template we have been using - essentially we set:
+
+```yaml
+Resources:
+  ProductApiFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: wrapped-boot-ddb-product-api
+      Handler: com.example.api.handler.LambdaHandler::handleRequest
+# END Values for wrapped-boot-ddb-product-api
+      Runtime: java21
+      SnapStart:
+        ApplyOn: PublishedVersions # Enable SnapStart for published versions of the function
+      AutoPublishAlias: live # This is required by SnapStart to manage versions
+      Architectures:
+      - x86_64
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          DYNAMO_TABLENAME: !Ref ProductDDBTable
+          JAVA_TOOL_OPTIONS: -XX:+TieredCompilation -XX:TieredStopAtLevel=1
+```
+
+Note for the `JAVA_TOOL_OPTIONS` see https://aws.amazon.com/blogs/compute/optimizing-aws-lambda-function-performance-for-java/
+for explanation.
+
+We can now run `sam build` and when that works run our local tests script. 
+
+
+#### Step 6 - event format
+
+At this point I got the error:
+
+```output
+com.amazonaws.serverless.exceptions.InvalidRequestEventException: The incoming event is not a valid request from Amazon API Gateway or an Application Load Balancer
+```
+
+
+
+#### Step 7 - sam deploy and remote tests
+
+With everything working locally we can run `sam deploy` and our remote tests script.
 
 ## Conclusion
 

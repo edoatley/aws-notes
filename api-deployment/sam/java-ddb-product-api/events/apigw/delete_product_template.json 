@@ -1,0 +1,36 @@
+{
+  "httpMethod": "DELETE",
+  "path": "/api/v1/products/{id}",
+  "resource": "/api/v1/products/{id}",
+  "queryStringParameters": null,
+  "pathParameters": {
+    "id": "placeholder-id"
+  },
+  "headers": {
+    "Accept": "*/*",
+    "User-Agent": "SAM-Local-Test-Agent",
+    "Host": "localhost"
+  },
+  "body": null,
+  "isBase64Encoded": false,
+  "stageVariables": {
+    "stage": "test"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "resourceId": "resource-id",
+    "stage": "test",
+    "requestId": "test-request-id-delete",
+    "requestTime": "01/Jan/2024:00:00:00 +0000",
+    "requestTimeEpoch": 1672531200000,
+    "identity": {
+      "sourceIp": "127.0.0.1",
+      "userAgent": "SAM-Local-Test-Agent"
+    },
+    "path": "/api/v1/products/{id}",
+    "resourcePath": "/api/v1/products/{id}",
+    "httpMethod": "DELETE",
+    "apiId": "api-id",
+    "protocol": "HTTP/1.1"
+  }
+}
