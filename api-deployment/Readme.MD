@@ -1543,10 +1543,21 @@ Retrieve the deleted product and fetch http status
 
 So it seems to be all good - lets check in AWS (CloudWatch) for the performance:
 
-![CloudWatch-SnapStart.png](images/CloudWatch-SnapStart.png)
+![CloudWatch-SnapStart](images/CloudWatch-SnapStart.png)
 
-Note how the first call takes 1s which is still a lot better than local (perhaps due to layers?) but after that the calls
-are quite rapid in the 12-31ms range
+Note how the first call takes 1s which is still a lot better than local tests, but after that the calls are rapid in the 12-31ms range
+
+After leaving it overnight I ran the test again to see if the good performance was maintained:
+
+![CloudWatch-SnapStart 2](images/CloudWatch-SnapStart2.png)
+
+We can see the cold start one of 788ms is better than the original one of 1159ms so this could be SnapStart showing an 
+improvement.
+
+##### Aside on memory usage
+
+Interestingly the stats in the logs show the memory used is a lot less than defined so it may be beneficial to try 1GB 
+or even less to reduce costs given the main reason for setting it this high was to aid startup.
 
 #### 4. GraalVM
 
