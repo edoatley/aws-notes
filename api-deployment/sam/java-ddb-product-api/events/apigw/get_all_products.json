@@ -1,0 +1,34 @@
+{
+  "httpMethod": "GET",
+  "path": "/api/v1/products",
+  "resource": "/api/v1/products",
+  "queryStringParameters": null,
+  "pathParameters": null,
+  "headers": {
+    "Accept": "*/*",
+    "User-Agent": "SAM-Local-Test-Agent",
+    "Host": "localhost"
+  },
+  "body": null,
+  "isBase64Encoded": false,
+  "stageVariables": {
+    "stage": "test"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "resourceId": "resource-id",
+    "stage": "test",
+    "requestId": "test-request-id-get-all",
+    "requestTime": "01/Jan/2024:00:00:00 +0000",
+    "requestTimeEpoch": 1672531200000,
+    "identity": {
+      "sourceIp": "127.0.0.1",
+      "userAgent": "SAM-Local-Test-Agent"
+    },
+    "path": "/api/v1/products",
+    "resourcePath": "/api/v1/products",
+    "httpMethod": "GET",
+    "apiId": "api-id",
+    "protocol": "HTTP/1.1"
+  }
+}

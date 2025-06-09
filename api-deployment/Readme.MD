@@ -30,9 +30,14 @@
     * [Spring Cloud Function app with SnapStart and `sam local start-api`](#spring-cloud-function-app-with-snapstart-and-sam-local-start-api)
       * [1. Fixing local performance](#1-fixing-local-performance)
       * [2. Framework & Code Optimizations (Good Hygiene)](#2-framework--code-optimizations-good-hygiene)
-      * [3. Snapstart for remote performance](#3-snapstart-for-remote-performance)
+      * [3. SnapStart for remote performance](#3-snapstart-for-remote-performance)
+        * [Aside on memory usage](#aside-on-memory-usage)
       * [4. GraalVM](#4-graalvm)
-    * [Direct migration of boot app](#direct-migration-of-boot-app)
+    * [Direct/Minimalised migration of boot app](#directminimalised-migration-of-boot-app)
+      * [Step 1 - Copy the source Spring Boot app](#step-1---copy-the-source-spring-boot-app)
+      * [Step 2 - Configure 'Shaded' JAR](#step-2---configure-shaded-jar)
+      * [Step 3 -](#step-3---)
+  * [Conclusion](#conclusion)
 <!-- TOC -->
 
 ## Introduction
@@ -1568,6 +1573,177 @@ starts in milliseconds.
 However, this is a more advanced path that requires significant changes to the build process, but it is the ultimate 
 solution for eliminating JVM cold starts.
 
-### Direct migration of boot app
+### Direct/Minimalised migration of boot app
 
-https://www.baeldung.com/spring-boot-aws-lambda
+Here we will follow https://www.baeldung.com/spring-boot-aws-lambda to migrate [boot-ddb-product-api](boot-ddb-product-api)
+
+#### Step 1 - Copy the source Spring Boot app
+
+Firstly copy the [boot-ddb-product-api](boot-ddb-product-api) to [wrapped-boot-ddb-product-api](sam/java-ddb-product-api/wrapped-boot-ddb-product-api)
+excluding scripts and Dockerfile and updating the name in [settings.gradle](sam/java-ddb-product-api/wrapped-boot-ddb-product-api/settings.gradle):
+
+```grooy
+rootProject.name = 'wrapped-boot-ddb-product-api'
+```
+
+We can then run a gradlew clean build to check it all works ok after this.
+
+#### Step 2 - Configure 'Shaded' JAR
+
+The term "shaded JAR" is used to describe a "fat" or "uber" JAR that bundles your application's code along with all of its 
+dependencies into a single JAR file.
+
+To do this we need to bring in some plugins and build script like we did with [ProductApiSpringCloudFunc](./sam/java-ddb-product-api/ProductApiSpringCloudFunc)
+
+The plugins we need are:
+
+```groovy
+    // creates the shaded (fat) jar
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    // creates a thin executable jar with just the application code and register of the dependencies
+    id 'org.springframework.boot.experimental.thin-launcher' version "1.0.31.RELEASE"
+```
+
+Note, thin jars are discussed more [here](https://www.baeldung.com/spring-boot-thin-jar):
+
+> The Spring Boot Thin Launcher is a small library that reads an artifact’s dependencies from a file bundled in the archive itself, downloads them from a Maven repository and finally launches the main class of the application
+> The whole point of thin jars is to avoid bundling the dependencies with the application. However, dependencies don’t magically disappear, they’re simply stored elsewhere.
+
+In our case we want the dependency jars to be in the lambda layer
+
+The full gradle config is like in our Spring Cloud Function example ProductApiSpringCloudFunc
+
+#### Step 3 - create a class that implements a RequestHandler
+
+For this we create a class to proxy lambda requests to the Sping Boot applciation called [LambdaHandler](./sam/java-ddb-product-api/wrapped-boot-ddb-product-api/src/main/java/com/example/api/handler/LambdaHandler.java).
+
+We could potentially also have implemented in a way to asynchronously initialise to improve performance which would make
+the code almost the same:
+
+```java
+public class AsynchronousLambdaHandler implements RequestHandler<AwsProxyRequest, AwsProxyResponse> {
+    private static SpringBootLambdaContainerHandler<AwsProxyRequest, AwsProxyResponse> handler;
+
+    public AsynchronousLambdaHandler() throws ContainerInitializationException {
+        handler = (SpringBootLambdaContainerHandler<AwsProxyRequest, AwsProxyResponse>)
+                new SpringBootProxyHandlerBuilder()
+                        .springBootApplication(ProductApiApplication.class)
+                        .asyncInit()
+                        .buildAndInitialize();
+    }
+
+    @Override
+    public AwsProxyResponse handleRequest(AwsProxyRequest input, Context context) {
+        return handler.proxy(input, context);
+    }
+}
+```
+
+#### Step 4 - run some tests
+
+Here we reran the same tests as from the source Spring Boot app to test the controller but also wrote [LambdaProductTest](./sam/java-ddb-product-api/wrapped-boot-ddb-product-api/src/test/java/com/example/api/lambda/LambdaProductTest.java)
+to check that we can send Lambda events to the app and it proxy them to the controller.
+
+The test results look good:
+
+![Test-Results.png](images/Test-Results.png)
+
+#### Step 5 - update the sam template and build
+
+For this there are few changes to the template we have been using - essentially we set:
+
+```yaml
+Resources:
+  ProductApiFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: wrapped-boot-ddb-product-api
+      Handler: com.example.api.handler.LambdaHandler::handleRequest
+# END Values for wrapped-boot-ddb-product-api
+      Runtime: java21
+      SnapStart:
+        ApplyOn: PublishedVersions # Enable SnapStart for published versions of the function
+      AutoPublishAlias: live # This is required by SnapStart to manage versions
+      Architectures:
+      - x86_64
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          DYNAMO_TABLENAME: !Ref ProductDDBTable
+          JAVA_TOOL_OPTIONS: -XX:+TieredCompilation -XX:TieredStopAtLevel=1
+```
+
+Note for the `JAVA_TOOL_OPTIONS` see https://aws.amazon.com/blogs/compute/optimizing-aws-lambda-function-performance-for-java/
+for explanation.
+
+We can now run `sam build` and when that works run our local tests script. 
+
+
+#### Step 6 - event format
+
+At this point I got the error:
+
+```output
+com.amazonaws.serverless.exceptions.InvalidRequestEventException: The incoming event is not a valid request from Amazon API Gateway or an Application Load Balancer
+```
+
+I eventually discovered that this could be an issue with the library as described here https://github.com/aws/serverless-java-container/issues/259
+
+Essentially in my controller I have
+
+```java
+@ResponseBody Product product;
+```
+
+The mapping is not working well due to the issue abvoe and so we can workaround as suggested by changing to a String for example by amending the post to:
+
+```java
+    @PostMapping
+    public ResponseEntity<Product> createProduct(@RequestBody String productString) {
+        Product product = null;
+        try {
+            product = mapper.readValue(productString, Product.class);
+        } catch (JsonProcessingException e) {
+            log.error("Error parsing product JSON", e);
+            return ResponseEntity.badRequest().build();
+        }
+        // If the product ID is not provided in the request body, generate one.
+        if (product.getId() == null || product.getId().trim().isEmpty()) {
+            product.setId(UUID.randomUUID().toString());
+        }
+        Product savedProduct = productRepository.save(product);
+        return ResponseEntity.ok(savedProduct);
+    }
+```
+
+In addition, because the Lambda expects to map a `AwsProxyRequest` to the Spring Boot app then back to a `AwsProxyResponse`
+we need to amend the events we use in the local invoke. I created these events in [this apigw folder](./sam/java-ddb-product-api/events/apigw)
+and a specialised script [local-test-apigw.sh](./sam/java-ddb-product-api/scripts/local-test-apigw.sh) to use them.
+
+#### Step 7 - sam deploy and remote tests
+
+With everything working locally we can run `sam deploy` and our remote tests script.
+
+This seems to work good but not perform as well as above though the SnapStart helps!
+
+![Wrapper-CW-Logs.png](images/Wrapper-CW-Logs.png)
+
+## Conclusion
+
+Both ECS and Lamdba offer alternative approaches to running Java applications with different pros and cons
+
+In my experimentation here I have tried the following approaches:
+
+|    | Approach                                                                                                    | Platform | Comments                                                                                                                                                                                                                                                                                 | Link above                                                                                                                              |
+|----|-------------------------------------------------------------------------------------------------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| 1. | Simple approach with public ECS tasks exposed over public IPs                                               | ECS      | Very basic set up mainly to learn about running containers in ECS, would not use in production but relatively simple to implement                                                                                                                                                        | [Simplistic implementation](#simplistic-implementation)                                                                                 |
+| 2. | More realistic ECS deployment with private networking (to/from ECS), and an API Gateway for public exposure | ECS      | Works well and provides a nice way to deploy a containerised application. Use of Fargate allows costs to be minimised and autoscaling.                                                                                                                                                   | [More Private Implementation](#more-private-implementation)                                                                             |
+| 3. | Building the same Product API from the ground up leveraging AWS SAM.                                        | Lambda   | The resulting code here is simple and lightweight compared with later where we try to pull in a Spring Boot application. This is likely harder when the app you are mimicking is not trivial. The sam pipeline capability lets you get building and deploying with automation with ease. | [AWS Serverless Application Model (SAM)](#aws-serverless-application-model-sam)                                                         |
+| 4. | Wrapping (most of) a Spring Boot app with Spring Cloud Functions                                            | Lambda   | Here we kept most of the code except the REST controller logic which was replaced with a function bean and the Spring Cloud Function library. Worked well but with a long cold start.                                                                                                    | [Lambda using a Spring Cloud Function app](#lambda-using-a-spring-cloud-function-app)                                                   |
+| 5. | Using SnapStart to improve the slow cold start of the Spring Cloud Function lambda                          | Lambda   | SnapStart was very effective at improving lambda performance and is crucial for a real world scenario                                                                                                                                                                                    | [Spring Cloud Function app with SnapStart and `sam local start-api`](#spring-cloud-function-app-with-snapstart-and-sam-local-start-api) |
+| 6. | Wrap a Spring Boot application with a container                                                             | Lambda   | Here we wrap the spring boot application ina  container so the app is largely unchange other than pulling in the container library                                                                                                                                                       | [Direct/Minimalised migration of boot app](#directminimalised-migration-of-boot-app)                                                    |
+
+In conclusion, I would say:
+
+1. if you have a very complicated containerised application then approach **2.** is ideal 
+2. approach **5.** could save cost if there is spiky load
+3. for a simple or greenfield app **3.** seems to reduce the code required but of course is not valid if you need Spring Boot abilities.
