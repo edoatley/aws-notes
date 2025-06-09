@@ -6,12 +6,13 @@
   "pathParameters": {
     "id": "placeholder-id"
   },
-  "headers": { // Keep other single-value headers
+  "headers": {
     "Accept": "*/*",
     "User-Agent": "SAM-Local-Test-Agent",
-    "Host": "localhost"
+    "Host": "localhost",
+    "Content-Type": "application/json"
   },
-  "multiValueHeaders": { // Add/use multiValueHeaders
+  "multiValueHeaders": {
     "Content-Type": ["application/json"]
   },
   "body": "{\"id\":\"placeholder-id\",\"name\":\"Updated Product via APIGW Event\",\"description\":\"An updated test product\",\"price\":19.99}",
@@ -20,7 +21,6 @@
     "stage": "test"
   },
   "requestContext": {
-    // ... (similar requestContext as in post_product.json, ensure path is updated by script)
     "accountId": "123456789012",
     "resourceId": "resource-id",
     "stage": "test",
@@ -31,7 +31,7 @@
       "sourceIp": "127.0.0.1",
       "userAgent": "SAM-Local-Test-Agent"
     },
-    "path": "/api/v1/products/{id}", // This will be updated by your script
+    "path": "/api/v1/products/{id}",
     "resourcePath": "/api/v1/products/{id}",
     "httpMethod": "PUT",
     "apiId": "api-id",

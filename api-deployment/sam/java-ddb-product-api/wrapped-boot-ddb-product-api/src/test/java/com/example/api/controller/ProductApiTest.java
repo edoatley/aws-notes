@@ -103,7 +103,7 @@ public class ProductApiTest extends AbstractDynamoDbTest {
         productRepository.save(product);
 
         mockMvc.perform(delete(API_PRODUCTS + "/1"))
-                .andExpect(status().isOk());
+                .andExpect(status().isNoContent());
 
         mockMvc.perform(get(API_PRODUCTS + "/1"))
                 .andExpect(status().isNotFound());

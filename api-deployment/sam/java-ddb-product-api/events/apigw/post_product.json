@@ -7,10 +7,8 @@
   "headers": {
     "Accept": "*/*",
     "User-Agent": "SAM-Local-Test-Agent",
-    "Host": "localhost"
-  },
-  "multiValueHeaders": {
-    "Content-Type": ["application/json"]
+    "Host": "localhost",
+    "Content-Type": "application/json"
   },
   "body": "{\"name\":\"Brand New Product via APIGW Event\",\"description\":\"A fantastic product created via POST\",\"price\":49.99}",
   "isBase64Encoded": false,

@@ -1686,11 +1686,46 @@ At this point I got the error:
 com.amazonaws.serverless.exceptions.InvalidRequestEventException: The incoming event is not a valid request from Amazon API Gateway or an Application Load Balancer
 ```
 
+I eventually discovered that this could be an issue with the library as described here https://github.com/aws/serverless-java-container/issues/259
 
+Essentially in my controller I have
+
+```java
+@ResponseBody Product product;
+```
+
+The mapping is not working well due to the issue abvoe and so we can workaround as suggested by changing to a String for example by amending the post to:
+
+```java
+    @PostMapping
+    public ResponseEntity<Product> createProduct(@RequestBody String productString) {
+        Product product = null;
+        try {
+            product = mapper.readValue(productString, Product.class);
+        } catch (JsonProcessingException e) {
+            log.error("Error parsing product JSON", e);
+            return ResponseEntity.badRequest().build();
+        }
+        // If the product ID is not provided in the request body, generate one.
+        if (product.getId() == null || product.getId().trim().isEmpty()) {
+            product.setId(UUID.randomUUID().toString());
+        }
+        Product savedProduct = productRepository.save(product);
+        return ResponseEntity.ok(savedProduct);
+    }
+```
+
+In addition, because the Lambda expects to map a `AwsProxyRequest` to the Spring Boot app then back to a `AwsProxyResponse`
+we need to amend the events we use in the local invoke. I created these events in [this apigw folder](./sam/java-ddb-product-api/events/apigw)
+and a specialised script [local-test-apigw.sh](./sam/java-ddb-product-api/scripts/local-test-apigw.sh) to use them.
 
 #### Step 7 - sam deploy and remote tests
 
 With everything working locally we can run `sam deploy` and our remote tests script.
+
+This seems to work good but not perform as well as above though the SnapStart helps!
+
+![Wrapper-CW-Logs.png](images/Wrapper-CW-Logs.png)
 
 ## Conclusion
 

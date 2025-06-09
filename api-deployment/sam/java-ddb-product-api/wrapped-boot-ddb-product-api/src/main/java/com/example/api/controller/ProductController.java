@@ -2,22 +2,41 @@ package com.example.api.controller;
 
 import com.example.api.model.Product;
 import com.example.api.repository.ProductRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
+@Slf4j
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/api/v1/products")
 public class ProductController {
 
-    @Autowired
-    private ProductRepository productRepository;
+    private final ProductRepository productRepository;
+    private final ObjectMapper mapper;
 
     @PostMapping
-    public Product createProduct(@RequestBody Product product) {
-        return productRepository.save(product);
+    public ResponseEntity<Product> createProduct(@RequestBody String productString) {
+        Product product = null;
+        try {
+            product = mapper.readValue(productString, Product.class);
+        } catch (JsonProcessingException e) {
+            log.error("Error parsing product JSON", e);
+            return ResponseEntity.badRequest().build();
+        }
+        // If the product ID is not provided in the request body, generate one.
+        if (product.getId() == null || product.getId().trim().isEmpty()) {
+            product.setId(UUID.randomUUID().toString());
+        }
+        Product savedProduct = productRepository.save(product);
+        return ResponseEntity.ok(savedProduct);
     }
 
     @GetMapping("/{id}")
@@ -35,7 +54,15 @@ public class ProductController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Product> updateProduct(@PathVariable("id") String id, @RequestBody Product product) {
+    public ResponseEntity<Product> updateProduct(@PathVariable("id") String id, @RequestBody String productString) {
+        Product product = null;
+        try {
+            product = mapper.readValue(productString, Product.class);
+        } catch (JsonProcessingException e) {
+            log.error("Error parsing product JSON", e);
+            return ResponseEntity.badRequest().build();
+        }
+
         Product existingProduct = productRepository.findById(id);
         if (existingProduct != null) {
             product.setId(id);
@@ -49,7 +76,7 @@ public class ProductController {
         Product existingProduct = productRepository.findById(id);
         if (existingProduct != null) {
             productRepository.deleteById(id);
-            return ResponseEntity.ok().build();
+            return ResponseEntity.noContent().build();
         }
         return ResponseEntity.notFound().build();
     }
