@@ -1,0 +1,6 @@
+{
+  "PeriodicDataIngestionFunction": {
+    "KINESIS_STREAM_NAME": "ProgrammeDataStream",
+    "EXTERNAL_API_ENDPOINT": "https://api.example.com/tvdata"
+  }
+}

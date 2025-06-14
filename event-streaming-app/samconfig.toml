@@ -1,0 +1,11 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "sam-local-deploy-periodic-ingestion"
+resolve_s3 = true
+s3_prefix = "sam-local-deploy-periodic-ingestion"
+region = "eu-west-2"
+profile = "streaming"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "SharedInfrastructureStackName=\"uk-tv-guide-shared-infra\""
+image_repositories = []

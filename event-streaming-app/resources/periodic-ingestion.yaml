@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM application for Periodic UK TV Data Ingestion
+
+Parameters:
+  SharedInfrastructureStackName:
+    Type: String
+    Default: uk-tv-guide-shared-infra
+    AllowedValues: [uk-tv-guide-shared-infra]
+
+Resources:
+  DataIngestionLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: UKTVDataIngestionLambdaRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: UKTVDataIngestionLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - kinesis:PutRecord
+                Resource: !ImportValue
+                  'Fn::Sub': '${SharedInfrastructureStackName}-ProgrammeDataStreamArn' # Replace 'shared-infra-stack-name'
+
+  PeriodicDataIngestionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: PeriodicUKTVDataIngestionFunction
+      Handler: app.lambda_handler
+      Runtime: python3.9
+      CodeUri: ../src/periodic_ingestion/
+      Description: Periodically fetches TV data from an external API and sends it to Kinesis.
+      MemorySize: 256
+      Timeout: 300
+      Role: !GetAtt DataIngestionLambdaRole.Arn
+      Events:
+        ScheduledTrigger:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+            Name: DailyUKTVDataIngestionTrigger
+            Enabled: true
+      Environment:
+        Variables:
+          KINESIS_STREAM_NAME: !ImportValue
+            'Fn::Sub': '${SharedInfrastructureStackName}-ProgrammeDataStreamName'
+          EXTERNAL_API_ENDPOINT: "https://api.example.com/tvdata"
+
+Outputs:
+  PeriodicDataIngestionFunctionName:
+    Description: "Name of the Periodic Data Ingestion Lambda function"
+    Value: !Ref PeriodicDataIngestionFunction
+  PeriodicDataIngestionFunctionArn:
+    Description: "ARN of the Periodic Data Ingestion Lambda function"
+    Value: !GetAtt PeriodicDataIngestionFunction.Arn

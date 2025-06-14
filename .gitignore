@@ -2,3 +2,4 @@
 .aws-sam
 build
 .gradle
+.DS_Store

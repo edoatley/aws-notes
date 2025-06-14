@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Shared Infrastructure for UK TV and Streaming Guide App
+
+Resources:
+  LambdaCodeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "uk-tv-guide-lambda-code-${AWS::AccountId}"
+
+  # DynamoDB Table for TV Programmes
+  ProgrammesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: UKTVProgrammes
+      AttributeDefinitions:
+        - AttributeName: "PK"
+          AttributeType: "S"
+        - AttributeName: "SK"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "PK"
+          KeyType: "HASH"  # Partition key
+        - AttributeName: "SK"
+          KeyType: "RANGE" # Sort key
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # Kinesis Data Stream for incoming data
+  ProgrammeDataStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: "ProgrammeDataStream"
+      StreamModeDetails:
+        StreamMode: ON_DEMAND
+
+Outputs:
+  LambdaCodeBucketName:
+    Description: "Name of the S3 bucket for Lambda code"
+    Value: !Ref LambdaCodeBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaCodeBucketName"
+
+  ProgrammesTableName:
+    Description: "Name of the DynamoDB table for programmes"
+    Value: !Ref ProgrammesTable
+    Export:
+      Name: !Sub "${AWS::StackName}-ProgrammesTableName"
+
+  ProgrammeDataStreamName:
+    Description: "Name of the Kinesis Data Stream"
+    Value: !Ref ProgrammeDataStream
+    Export:
+      Name: !Sub "${AWS::StackName}-ProgrammeDataStreamName"
+
+  ProgrammeDataStreamArn:
+    Description: "ARN of the Kinesis Data Stream"
+    Value: !GetAtt ProgrammeDataStream.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ProgrammeDataStreamArn"
