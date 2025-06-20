@@ -41,7 +41,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: PeriodicUKTVDataIngestionFunction
-      Handler: app.lambda_handler
+      Handler: ingestion.lambda_handler
       Runtime: python3.9
       CodeUri: ../src/periodic_ingestion/
       Description: Periodically fetches TV data from an external API and sends it to Kinesis.

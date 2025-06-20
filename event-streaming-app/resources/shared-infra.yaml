@@ -49,6 +49,12 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-ProgrammesTableName"
 
+  ProgrammesTableArn:
+    Description: "ARN of the DynamoDB table for programmes"
+    Value: !GetAtt ProgrammesTable.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ProgrammesTableArn"
+
   ProgrammeDataStreamName:
     Description: "Name of the Kinesis Data Stream"
     Value: !Ref ProgrammeDataStream

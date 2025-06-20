@@ -1,10 +1,26 @@
 import json
 import os
-import boto3 # AWS SDK for Python
+import boto3
+from botocore.exceptions import ClientError
 
-# Initialize Kinesis client outside the handler for better performance
-kinesis_client = boto3.client('kinesis')
+# Environment variables
 KINESIS_STREAM_NAME = os.environ.get('KINESIS_STREAM_NAME') # Get from environment variable
+
+# Global AWS clients and fetched API key (initialized once per container)
+kinesis_client = None
+
+# Initialization block
+try:
+    if not KINESIS_STREAM_NAME:
+        raise EnvironmentError("KINESIS_STREAM_NAME environment variable must be set.")
+    kinesis_client = boto3.client('kinesis')
+except EnvironmentError as e:
+    print(f"Configuration error: {e}")
+    raise
+except ClientError as e:
+    print(f"AWS Client Initialization error: {e}")
+    raise
+
 
 def lambda_handler(event, context):
     """
@@ -12,13 +28,6 @@ def lambda_handler(event, context):
     """
     print(f"Received event: {json.dumps(event)}")
     print(f"Kinesis Stream Name from env: {KINESIS_STREAM_NAME}")
-
-    # Placeholder for fetching data from external API
-    # For example:
-    # external_api_endpoint = os.environ.get('EXTERNAL_API_ENDPOINT')
-    # print(f"External API Endpoint: {external_api_endpoint}")
-    # response = requests.get(external_api_endpoint)
-    # data_to_ingest = response.json()
 
     # Dummy data for now
     data_to_ingest = {
@@ -38,9 +47,6 @@ def lambda_handler(event, context):
         }
 
     try:
-        # Send data to Kinesis
-        # The partition key helps distribute data among shards.
-        # For this example, using program_id or a timestamp could be suitable.
         response = kinesis_client.put_record(
             StreamName=KINESIS_STREAM_NAME,
             Data=json.dumps(data_to_ingest), # Data must be bytes or string
@@ -57,13 +63,3 @@ def lambda_handler(event, context):
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
         }
-
-# For local testing (optional)
-if __name__ == "__main__":
-    # Mock event and context for local testing
-    mock_event = {"source": "local_test"}
-    mock_context = {}
-    # Set environment variables if running locally
-    os.environ['KINESIS_STREAM_NAME'] = 'ProgrammeDataStream' # Replace with your actual stream name if different
-    # os.environ['EXTERNAL_API_ENDPOINT'] = 'your_api_endpoint_here'
-    print(lambda_handler(mock_event, mock_context))

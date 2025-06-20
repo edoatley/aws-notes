@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM application for Periodic Reference Data Ingestion
+
+Parameters:
+  SharedInfrastructureStackName:
+    Type: String
+    Default: uk-tv-guide-shared-infra
+    AllowedValues: [uk-tv-guide-shared-infra]
+  WatchModeApiKey:
+    Type: String
+    NoEcho: true # Mark as NoEcho for sensitive parameters
+    Description: "The API key for WatchMode API (will be stored in Secrets Manager)"
+
+Resources:
+  ReferenceDataLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: UKTVReferenceLambdaRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: UKTVReferenceLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !ImportValue # Import the DynamoDB table ARN
+                  'Fn::Sub': '${SharedInfrastructureStackName}-ProgrammesTableArn'
+              - Effect: Allow # Add permission to get the secret API KEY value
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref WatchModeApiKeySecret # Grant permission to the specific secret
+
+  WatchModeApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}/WatchModeApiKey"
+      Description: API key for WatchMode API used by PeriodicReferenceFunction
+      SecretString: !Ref WatchModeApiKey
+
+  PeriodicReferenceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: PeriodicUKTVReferenceFunction
+      Handler: reference.lambda_handler
+      Runtime: python3.9
+      CodeUri: ../src/periodic_reference_data/
+      Description: Periodically fetches TV reference data from WatchMode API and saves it to DynamoDB.
+      MemorySize: 256
+      Timeout: 60 # Adjusted timeout, 300 might be excessive for this
+      Role: !GetAtt ReferenceDataLambdaRole.Arn
+      Events:
+        ScheduledTrigger:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day) # Example: runs once a day
+            Name: DailyUKTVReferenceTrigger
+            Enabled: true
+            # Input to pass the refresh_sources and regions parameters
+            Input: '{"refresh_sources": "Y", "regions": "GB"}'
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !ImportValue # Import the DynamoDB table name
+            'Fn::Sub': '${SharedInfrastructureStackName}-ProgrammesTableName'
+          WATCHMODE_API_KEY: "" # for local testing
+          WATCHMODE_API_KEY_SECRET_ARN: !Ref WatchModeApiKeySecret          # Pass the ARN of the secret to the Lambda function
+          WATCHMODE_URL: "https://api.watchmode.com/v1/sources/"
+
+Outputs:
+  PeriodicReferenceFunctionName:
+    Description: "Name of the Periodic Reference Data Lambda function"
+    Value: !Ref PeriodicReferenceFunction
+  PeriodicReferenceFunctionArn:
+    Description: "ARN of the Periodic Reference Data Lambda function"
+    Value: !GetAtt PeriodicReferenceFunction.Arn
+  WatchModeSecretArnOutput:
+    Description: "ARN of the WatchMode API Key Secret"
+    Value: !Ref WatchModeApiKeySecret

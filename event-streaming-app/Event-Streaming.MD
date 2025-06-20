@@ -175,7 +175,7 @@ and check that works:
 Deleted successfully
 ```
 
-## Step 4 - WatchMode integration
+## Step 4 - WatchMode initial integration
 
 For this service to really work we need a source of TV information for which we will leverage [Watchmode](https://api.watchmode.com/)
 
@@ -191,6 +191,114 @@ It also leverages it's own IDs for actors and movies as described [here](https:/
 - https://api.watchmode.com/datasets/person_id_map.csv
 
 Could be a good source of test data and help understand the service better.
+
+### Sources
+
+Watchmode has various static data such as sources of TV programmes (`/v1/sources/`). 
+
+It seems like a good idea to create another lambda to save this data to dynamoDB to avoid extra calls. We will create this
+lambda [here](/src/periodic_reference_data) and create a CFN template [here](resources/periodic-reference.yaml)
+
+We can pass a region of **GB** to `/v1/sources/` to get sources applicable in the UK. A retrieved source looks like this:
+
+```json
+{
+"id": 203,
+"name": "Netflix",
+"type": "sub",
+"logo_100px": "https://cdn.watchmode.com/logos/203_logo_100px.jpg",
+"ios_appstore_url": "https://apps.apple.com/app/id363590051",
+"android_playstore_url": "https://play.google.com/store/apps/details?id=com.netflix.mediaclient",
+"regions": ["US", "GB", "AU"]
+}
+```
+
+we will use a PK of `source:<id>` and a SK of `name` e.g. `source:203` and `Netflix`
+
+We will now build the function and test it locally:
+
+```bash
+# login via IAM Identity Center
+aws sso login --profile streaming
+
+
+# Build
+sam build --template-file ./resources/periodic-reference.yaml --profile streaming
+
+# Test
+sam local invoke PeriodicReferenceFunction \
+  --event ./events/periodic_reference.json \
+  --env-vars ./env/periodic_reference.json \
+  --profile streaming
+#  --template-file ./.aws-sam/build/template.yaml \
+#  --template-file ./resources/periodic-reference.yaml \
+```
+
+<details>
+<summary>Note: why is `--template-file` best omitted?</summary>
+
+Initially I was running a `sam local invoke` command that specifies `--template-file ./resources/periodic-reference.yaml`.
+Unfortunately this was a problem as the template specifies the directory `../src/periodic_reference_data/` which does not
+contain the requests module, and so I got the response:
+
+```output
+{"errorMessage": "Unable to import module 'reference': No module named 'requests'", "errorType": "Runtime.ImportModuleError", "requestId": "", "stackTrace": []}
+```
+
+To fix this, I need to tell sam local invoke to use the template file that sam build generated, as this template will have
+the CodeUri correctly pointing to the built artifacts (including the requests library).
+
+However, when I set the template the environment variables were not working as expected and so I hit upon running the sam build then 
+just running the sam local invoke command with no `--template-file`
+</details>
+
+With everything working we can check the data has been saved as expected:
+
+```bash
+echo "PK\t\t\tSK" # Print header with tabs for spacing
+aws dynamodb scan \
+  --table-name UKTVProgrammes \
+  --max-items 10 \
+  --projection-expression "PK, SK" \
+  --profile streaming \
+  --region eu-west-2 \
+  --output json | \
+  jq -r '.Items[] | "\(.PK.S)\t\(.SK.S)"'
+```
+
+which gives us:
+
+```output
+PK                      SK
+source:381      Funimation
+source:247      Shout! Factory TV (Via Amazon Prime)
+source:411      Sky Store
+source:410      BFI Player
+source:80       Crunchyroll Premium
+source:376      Britbox
+source:349      AppleTV
+source:269      SundanceNow Doc Club (Via Amazon Prime)
+source:418      My5
+source:318      WWE Network
+```
+
+So now we have the sources saved
+
+### Genres
+
+Watchmode also has a set of genres (`/v1/genres/`). We will extend our lambda to store this data:
+
+```json
+[
+   { "id": 4, "name": "Comedy", "tmdb_id": 35 },
+   { "id": 6, "name": "Documentary", "tmdb_id": 99 },
+   { "id": 33, "name": "Anime", "tmdb_id": null }
+]
+```
+
+we will use a PK of `genre:<id>` and a SK of `name` e.g. `genre:4` and `Comedy`
+
+
 
 ## Cleanup
 
