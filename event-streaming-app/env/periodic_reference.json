@@ -1,6 +1,6 @@
 {
   "PeriodicReferenceFunction": {
     "DYNAMODB_TABLE_NAME": "UKTVProgrammes",
-    "WATCHMODE_URL": "https://api.watchmode.com/v1/sources/"
+    "WATCHMODE_HOSTNAME": "https://api.watchmode.com"
   }
 }

@@ -1,8 +1,29 @@
 # Event Streaming app
 
+## Table of contents
+
+<!-- TOC -->
+* [Event Streaming app](#event-streaming-app)
+  * [Table of contents](#table-of-contents)
+  * [Rough plan](#rough-plan)
+  * [Step 1 - Initial set up](#step-1---initial-set-up)
+  * [Step 2 - Shared infrastructure set up](#step-2---shared-infrastructure-set-up)
+  * [Step 3 - Periodic Ingestion Lambda (basic deployment)](#step-3---periodic-ingestion-lambda-basic-deployment)
+  * [Step 4 - WatchMode initial integration](#step-4---watchmode-initial-integration)
+    * [Sources](#sources)
+    * [Genres](#genres)
+  * [Cleanup](#cleanup)
+<!-- TOC -->
+
 ## Rough plan
 
-
+- Store TV reference data: A Lambda function will periodically fetch reference data and store in DynamoDB for use within the application
+- A Simple RESTful API exposed via API Gateway and backed by a lambda that stores a users preferences.  
+- Ingest TV and streaming data: A Lambda function will periodically fetch the latest TV schedules and streaming availability for the UK from an external API.
+- Process and enrich the data: The raw data will be sent to a Kinesis Data Stream for real-time processing. Another Lambda function will consume this data, clean it, and potentially enrich it with additional information (e.g., ratings from another source).
+- Store the program guide: The processed data will be stored in a DynamoDB table, optimized for efficient querying of shows, channels, and streaming services.
+- Real-time updates: DynamoDB Streams will capture any changes to the program data (e.g., a schedule update). A final Lambda function will be triggered by these streams to, for example, send notifications for favorited shows.
+- Provide a simple user interface: While the backend is the focus, a simple frontend (e.g., a static website hosted on S3) can be created to query the DynamoDB table via an API Gateway endpoint and display the TV guide.
 
 ## Step 1 - Initial set up
 
@@ -296,7 +317,30 @@ Watchmode also has a set of genres (`/v1/genres/`). We will extend our lambda to
 ]
 ```
 
-we will use a PK of `genre:<id>` and a SK of `name` e.g. `genre:4` and `Comedy`
+we will use a PK of `genre:<id>` and a SK of `name` e.g. `genre:4` and `Comedy`.
+
+We will amend the existing reference data lambda function and test it locally:
+
+```bash
+# login via IAM Identity Center
+aws sso login --profile streaming
+
+# Build
+sam build --template-file ./resources/periodic-reference.yaml --profile streaming
+
+# Test
+sam local invoke PeriodicReferenceFunction \
+  --event ./events/periodic_reference.json \
+  --env-vars ./env/periodic_reference.json \
+  --profile streaming
+```
+
+## Step 5 - Preferences API
+
+This is very similar to the previous two lambdas in many ways except this time we need to have API Gateway fronting the 
+lambda and ideally a pool of user personas we can use to test it out. 
+
+Firstly let's create our [CloudFormation template](./resources/user-preferences.yaml) 
 
 
 

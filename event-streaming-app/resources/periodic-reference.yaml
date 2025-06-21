@@ -78,7 +78,7 @@ Resources:
             'Fn::Sub': '${SharedInfrastructureStackName}-ProgrammesTableName'
           WATCHMODE_API_KEY: "" # for local testing
           WATCHMODE_API_KEY_SECRET_ARN: !Ref WatchModeApiKeySecret          # Pass the ARN of the secret to the Lambda function
-          WATCHMODE_URL: "https://api.watchmode.com/v1/sources/"
+          WATCHMODE_HOSTNAME: "https://api.watchmode.com"
 
 Outputs:
   PeriodicReferenceFunctionName:
