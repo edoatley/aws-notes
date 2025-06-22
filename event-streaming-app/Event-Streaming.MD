@@ -12,6 +12,7 @@
   * [Step 4 - WatchMode initial integration](#step-4---watchmode-initial-integration)
     * [Sources](#sources)
     * [Genres](#genres)
+  * [Step 5 - Preferences API](#step-5---preferences-api)
   * [Cleanup](#cleanup)
 <!-- TOC -->
 
@@ -335,7 +336,71 @@ sam local invoke PeriodicReferenceFunction \
   --profile streaming
 ```
 
-## Step 5 - Preferences API
+I then did some significant refactoring and retested with a local invoke which works as expected. Finally we can deploy
+the lambda and test remotely:
+
+```bash
+sam deploy --guided --profile streaming --capabilities CAPABILITY_NAMED_IAM                                                                                                                                                                                                              aws-notes  16:18:05
+```
+which gave the following dialogue to set parameters:
+
+```output
+Configuring SAM deploy
+======================
+
+        Looking for config file [samconfig.toml] :  Not found
+
+        Setting default arguments for 'sam deploy'
+        =========================================
+        Stack Name [sam-app]: uktv-periodic-reference          
+        AWS Region [eu-west-2]: 
+        Parameter SharedInfrastructureStackName [uk-tv-guide-shared-infra]: 
+        Parameter WatchModeApiKey: 
+        #Shows you resources changes to be deployed and require a 'Y' to initiate deploy
+        Confirm changes before deploy [y/N]: y
+        #SAM needs permission to be able to create roles to connect to the resources in your template
+        Allow SAM CLI IAM role creation [Y/n]: y
+        #Preserves the state of previously provisioned resources when an operation fails
+        Disable rollback [y/N]: n
+        Save arguments to configuration file [Y/n]: y
+        SAM configuration file [samconfig.toml]: 
+        SAM configuration environment [default]: 
+```
+
+Then awaited the stack to deploy after confirming. Now to test it works as expected remotely:
+
+```bash
+sam remote invoke PeriodicUKTVReferenceFunction \
+  --event ./events/periodic_reference.json \
+  --profile streaming
+```
+
+## Step 5 - SAM Project cleanup
+
+At this point I hit a bit of an issue. I was having to specify template files in my sam commands to switch between the 
+different serverless applications and when I built the reference data app it would delete any builds of the ingestion 
+app etc.
+
+I needed a way to have CloudFormation and SAM handle this leaving me to run commands like:
+
+```bash
+sam validate
+sam build
+sam deploy
+```
+
+To do this I made tome key changes:
+
+1. Created a [samconfig.toml](./samconfig.toml.template) that pointed to my new parent CloudFormation template for 
+   validate/build/deploy commands
+2. Took the Secret, Table, Stream, S3 bucket resources and added them to the parent CFN template [uktv-event-streaming-app.yaml](./resources/uktv-event-streaming-app.yaml]
+3. Created `AWS::Serverless::Application` resource in teh parent that point to [periodic-ingestion.yaml](./resources/periodic-ingestion.yaml) 
+and [periodic-reference.yaml](./resources/periodic-reference.yaml].
+
+With some tweaks the whole application is build on one SAM app but it is broken down into appropriate files to manage
+which means when we add the next lambda it will be trivial.
+
+## Step 6 - Preferences API
 
 This is very similar to the previous two lambdas in many ways except this time we need to have API Gateway fronting the 
 lambda and ideally a pool of user personas we can use to test it out. 

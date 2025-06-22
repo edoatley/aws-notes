@@ -3,10 +3,12 @@ Transform: AWS::Serverless-2016-10-31
 Description: SAM application for Periodic UK TV Data Ingestion
 
 Parameters:
-  SharedInfrastructureStackName:
+  ProgrammeDataStreamName:
     Type: String
-    Default: uk-tv-guide-shared-infra
-    AllowedValues: [uk-tv-guide-shared-infra]
+    Description: Name of the Program Data Stream
+  ProgrammeDataStreamArn:
+    Type: String
+    Description: ARN of the Program Data Stream
 
 Resources:
   DataIngestionLambdaRole:
@@ -31,18 +33,17 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: 'arn:aws:logs:*:*:*'
-              - Effect: Allow
-                Action:
-                  - kinesis:PutRecord
-                Resource: !ImportValue
-                  'Fn::Sub': '${SharedInfrastructureStackName}-ProgrammeDataStreamArn' # Replace 'shared-infra-stack-name'
+#              - Effect: Allow
+#                Action:
+#                  - kinesis:PutRecord
+#                Resource: !Ref ProgrammeDataStreamArn
 
   PeriodicDataIngestionFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: PeriodicUKTVDataIngestionFunction
       Handler: ingestion.lambda_handler
-      Runtime: python3.9
+      Runtime: python3.12
       CodeUri: ../src/periodic_ingestion/
       Description: Periodically fetches TV data from an external API and sends it to Kinesis.
       MemorySize: 256
@@ -57,9 +58,7 @@ Resources:
             Enabled: true
       Environment:
         Variables:
-          KINESIS_STREAM_NAME: !ImportValue
-            'Fn::Sub': '${SharedInfrastructureStackName}-ProgrammeDataStreamName'
-          EXTERNAL_API_ENDPOINT: "https://api.example.com/tvdata"
+          KINESIS_STREAM_NAME: !Ref ProgrammeDataStreamName
 
 Outputs:
   PeriodicDataIngestionFunctionName:

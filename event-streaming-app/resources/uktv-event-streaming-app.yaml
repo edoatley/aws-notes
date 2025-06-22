@@ -1,0 +1,79 @@
+# root-template.yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Root SAM application for the Event Streaming App.
+
+Parameters:
+  ProgrammesTableName:
+    Type: String
+    Description: Name of the DynamoDB table for programmes.
+    Default: UKTVProgrammes
+  WatchModeApiKey:
+    Type: String
+    NoEcho: true # Mark as NoEcho for sensitive parameters
+    Description: "The API key for WatchMode API (will be stored in Secrets Manager)"
+  WatchModeHostname:
+    Type: String
+    Description: "The Hostname for WatchMode API"
+    Default: "https://api.watchmode.com"
+
+Resources:
+  LambdaCodeBucket:
+    Type: AWS::S3::Bucket
+    # Let CFN name the bucket
+
+  WatchModeApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}/WatchModeApiKey"
+      Description: API key for WatchMode API used by PeriodicReferenceFunction
+      SecretString: !Ref WatchModeApiKey
+
+  # DynamoDB Table for TV Programmes
+  ProgrammesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref ProgrammesTableName
+      AttributeDefinitions:
+        - AttributeName: "PK"
+          AttributeType: "S"
+        - AttributeName: "SK"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "PK"
+          KeyType: "HASH"  # Partition key
+        - AttributeName: "SK"
+          KeyType: "RANGE" # Sort key
+      BillingMode: PAY_PER_REQUEST
+#      StreamSpecification:
+#        StreamViewType: NEW_AND_OLD_IMAGES
+
+#  # Kinesis Data Stream for incoming data
+#  ProgrammeDataStream:
+#    Type: AWS::Kinesis::Stream
+#    Properties:
+#      StreamModeDetails:
+#        StreamMode: ON_DEMAND
+
+  # Nested application for the Periodic Ingestion Lambda
+  PeriodicIngestionApp:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: periodic-ingestion.yaml
+      Parameters:
+#        ProgrammeDataStreamName: !Ref ProgrammeDataStream
+#        ProgrammeDataStreamArn: !GetAtt ProgrammeDataStream.Arn
+        ProgrammeDataStreamName: "dummy-kinesis-stream-name" # <--- DUMMY VALUE
+        ProgrammeDataStreamArn: "arn:aws:kinesis:eu-west-2:123456789012:stream/dummy-kinesis-stream" # <--- DUMMY VALUE
+
+
+  # Nested application for the Periodic Reference Data Lambda
+  PeriodicReferenceApp:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: periodic-reference.yaml
+      Parameters:
+        ProgramDataTableName: !Ref ProgrammesTable
+        ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
+        WatchModeApiKeySecretArn: !Ref WatchModeApiKeySecret
+        WatchModeHostname: !Ref WatchModeHostname

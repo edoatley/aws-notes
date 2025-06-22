@@ -3,6 +3,18 @@ import os
 import json
 import boto3
 from botocore.exceptions import ClientError
+import logging
+
+# Configure logger
+logger = logging.getLogger()
+logger.setLevel(os.environ.get("LOG_LEVEL", "INFO").upper()) # Allow log level to be set by env var
+
+# Define constants for DynamoDB keys and prefixes
+PK_FIELD = 'PK'
+SK_FIELD = 'SK'
+DATA_FIELD = 'data'
+SOURCE_PREFIX = 'source:'
+GENRE_PREFIX = 'genre:'
 
 # Environment variables
 DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
@@ -11,8 +23,7 @@ WATCHMODE_API_KEY_SECRET_ARN = os.environ.get('WATCHMODE_API_KEY_SECRET_ARN')
 # New: Allow direct API key for local testing
 WATCHMODE_API_KEY_DIRECT = os.environ.get('WATCHMODE_API_KEY')
 
-
-# Global AWS clients and fetched API key (initialized once per container)
+# Global AWS clients and fetched API key
 dynamodb_resource = None
 table = None
 secrets_manager_client = None
@@ -20,29 +31,43 @@ _cached_watchmode_api_key = None
 
 # Initialization block
 try:
-    if not DYNAMODB_TABLE_NAME or not WATCHMODE_HOSTNAME: # API Key ARN is optional if direct key is used
-        raise EnvironmentError("DYNAMODB_TABLE_NAME and WATCHMODE_URL environment variables must be set.")
+    if not DYNAMODB_TABLE_NAME:
+        raise EnvironmentError("DYNAMODB_TABLE_NAME environment variable not set.")
+    if not WATCHMODE_HOSTNAME: # Corrected from WATCHMODE_URL
+        raise EnvironmentError("WATCHMODE_HOSTNAME environment variable not set.")
+
     dynamodb_resource = boto3.resource('dynamodb')
     table = dynamodb_resource.Table(DYNAMODB_TABLE_NAME)
-    # Initialize secrets_manager_client only if a secret ARN is provided and no direct key
+    logger.info(f"Successfully initialized DynamoDB table: {DYNAMODB_TABLE_NAME}")
+
     if WATCHMODE_API_KEY_SECRET_ARN and not WATCHMODE_API_KEY_DIRECT:
         secrets_manager_client = boto3.client('secretsmanager')
+        logger.info("Successfully initialized Secrets Manager client.")
+    elif WATCHMODE_API_KEY_DIRECT:
+        logger.info("Direct API key provided; Secrets Manager client not initialized.")
+    else:
+        # This case (no direct key, no secret ARN) will be caught by get_watchmode_api_key_secret
+        logger.info("No direct API key and no Secrets Manager ARN; API key retrieval will fail if attempted.")
+
 except EnvironmentError as e:
-    print(f"Configuration error: {e}")
+    logger.error(f"Configuration error: {e}", exc_info=True)
     raise
 except ClientError as e:
-    print(f"AWS Client Initialization error: {e}")
+    logger.error(f"AWS Client Initialization error: {e}", exc_info=True)
+    raise
+except Exception as e: # Catch any other unexpected init errors
+    logger.error(f"Unexpected error during initialization: {e}", exc_info=True)
     raise
 
 
-def get_watchmode_api_key_secret():
+def get_watchmode_api_key_secret() -> str:
     """Fetches the WatchMode API key, prioritizing direct env var, then Secrets Manager."""
     global _cached_watchmode_api_key
     if _cached_watchmode_api_key:
         return _cached_watchmode_api_key
 
     if WATCHMODE_API_KEY_DIRECT:
-        print("Using direct API key from WATCHMODE_API_KEY_DIRECT.")
+        logger.info("Using direct API key from WATCHMODE_API_KEY_DIRECT.")
         _cached_watchmode_api_key = WATCHMODE_API_KEY_DIRECT
         return _cached_watchmode_api_key
 
@@ -53,46 +78,120 @@ def get_watchmode_api_key_secret():
         raise ValueError("Secrets Manager client could not be initialized.")
 
     try:
-        print(f"Fetching secret: {WATCHMODE_API_KEY_SECRET_ARN}")
+        logger.info(f"Fetching secret: {WATCHMODE_API_KEY_SECRET_ARN}")
         secret_value_response = secrets_manager_client.get_secret_value(
             SecretId=WATCHMODE_API_KEY_SECRET_ARN
         )
         _cached_watchmode_api_key = secret_value_response['SecretString']
         return _cached_watchmode_api_key
     except ClientError as e:
-        print(f"Error fetching API key from Secrets Manager: {e}")
+        logger.error(f"Error fetching API key from Secrets Manager: {e}")
         raise
 
 
-def debugEnvironment():
-    # print the environment details
-    print(f"DYNAMODB_TABLE_NAME: {DYNAMODB_TABLE_NAME}")
-    print(f"WATCHMODE_HOSTNAME: {WATCHMODE_HOSTNAME}")
-    print(f"WATCHMODE_API_KEY_SECRET_ARN: {WATCHMODE_API_KEY_SECRET_ARN}")
-    print(f"WATCHMODE_API_KEY_DIRECT: {WATCHMODE_API_KEY_DIRECT}")
+def _fetch_watchmode_data(api_key: str, endpoint: str, params: dict = None) -> list | None:
+    """Generic function to fetch data from a WatchMode API endpoint."""
+    if not WATCHMODE_HOSTNAME:
+        logger.error("WATCHMODE_HOSTNAME is not configured.")
+        return None # Or raise
+
+    url = f'{WATCHMODE_HOSTNAME}/v1/{endpoint}/'
+    base_params = {"apiKey": api_key}
+    if params:
+        base_params.update(params)
+
+    try:
+        logger.info(f"Fetching data from {url} with params: {params if params else 'N/A'}")
+        response = requests.get(url, params=base_params, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error fetching data from {url}: {e}", exc_info=True)
+        return None
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON response from {url}: {e}", exc_info=True)
+        return None
+
+
+def get_sources(region: str, api_key: str) -> list | None:
+    """Fetches all streaming sources available for the region."""
+    return _fetch_watchmode_data(api_key, "sources", params={"regions": region})
+
+
+def get_genres(api_key: str) -> list | None:
+    """Fetches all genres available."""
+    return _fetch_watchmode_data(api_key, "genres")
+
+
+def _save_items_to_dynamodb(items_list: list, item_type_prefix: str, item_type_name: str) -> bool:
+    """
+    Generic function to save a list of items (sources or genres) to DynamoDB.
+    Returns True if save operation was attempted for at least one item, False otherwise or if table is unavailable.
+    """
+    if not table:
+        logger.error(f"DynamoDB table not available for saving {item_type_name}s.")
+        return False
+
+    if not items_list: # No items to save
+        logger.info(f"No {item_type_name} items provided to save.")
+        return True # Operation considered successful as there's nothing to do
+
+    operation_attempted = False
+    for item in items_list:
+        operation_attempted = True
+        try:
+            if not isinstance(item, dict) or 'id' not in item or 'name' not in item:
+                logger.warning(f"Skipping invalid {item_type_name}_item (missing id or name): {item}")
+                continue
+
+            item_to_save = {
+                PK_FIELD: f'{item_type_prefix}{item["id"]}',
+                SK_FIELD: item["name"],
+                DATA_FIELD: item
+            }
+            table.put_item(Item=item_to_save)
+            logger.info(f"Saved {item_type_name}: {item['name']} (ID: {item['id']})")
+        except ClientError as e:
+            logger.error(f"DynamoDB error saving {item_type_name} {item.get('name', 'UNKNOWN')}: {e}", exc_info=True)
+            # Depending on requirements, you might want to collect these errors and affect the overall return status
+        except Exception as e:
+            logger.error(f"Unexpected error saving {item_type_name} {item.get('name', 'UNKNOWN')}: {e}", exc_info=True)
+    return operation_attempted
+
+
+def save_sources_to_dynamodb(sources_list: list):
+    """Saves the list of source objects to DynamoDB."""
+    return _save_items_to_dynamodb(sources_list, SOURCE_PREFIX, "source")
+
+
+def save_genres_to_dynamodb(genres_list: list):
+    """Saves the list of genre objects to DynamoDB."""
+    return _save_items_to_dynamodb(genres_list, GENRE_PREFIX, "genre")
 
 
 def lambda_handler(event, context):
-    print(f"Received event: {json.dumps(event)}")
+    logger.info(f"Received event: {json.dumps(event)}")
     # debugEnvironment()
 
     if not table:
-        print(f"DynamoDB table not initialized")
+        logger.error(f"DynamoDB table not initialized")
         return {'statusCode': 500, 'body': json.dumps({'error': 'DynamoDB table could not be initialized'})}
 
     api_key = None
     try:
         api_key = get_watchmode_api_key_secret()
     except Exception as e:
-        print(f"Failed to get API key: {e}")
+        logger.error(f"Failed to get API key: {e}")
         return {'statusCode': 500, 'body': json.dumps({'error': f'Failed to retrieve API key: {str(e)}'})}
 
     messages = []
 
+    status_code = 200
+
     # Handle source refresh
     if event.get('refresh_sources', 'N').upper() == 'Y':
         region = event.get("regions", "GB") # Default region
-        print(f"Attempting to refresh sources for region: {region}")
+        logger.info(f"Attempting to refresh sources for region: {region}")
         try:
             sources_data = get_sources(region, api_key)
             if sources_data:
@@ -101,14 +200,13 @@ def lambda_handler(event, context):
             else:
                 messages.append(f'No sources found or error fetching for region {region}')
         except Exception as e:
-            print(f"Error during source refresh process: {e}")
+            logger.error(f"Error during source refresh process: {e}")
             messages.append(f'Error processing sources for region {region}: {str(e)}')
-            # Decide if this should be a 500 or just a message in a 200 response
-            # For now, let's keep processing other requests and report errors in the message
+            status_code = 500
 
     # Handle genre refresh
     if event.get('refresh_genres', 'N').upper() == 'Y':
-        print("Attempting to refresh genres")
+        logger.info("Attempting to refresh genres")
         try:
             genres_data = get_genres(api_key)
             if genres_data:
@@ -117,107 +215,12 @@ def lambda_handler(event, context):
             else:
                 messages.append('No genres found or error fetching')
         except Exception as e:
-            print(f"Error during genre refresh process: {e}")
+            logger.error(f"Error during genre refresh process: {e}")
             messages.append(f'Error processing genres: {str(e)}')
+            status_code = 500
 
     # If no refresh was requested
     if not messages:
         messages.append("No refresh action requested.")
 
-    return {'statusCode': 200, 'body': json.dumps({'messages': messages})}
-
-
-def get_sources(region, api_key):
-    """
-    Fetches all streaming sources available for the region.
-    Returns a list of source objects (dictionaries).
-    """
-    url = f'{WATCHMODE_HOSTNAME}/v1/sources/'
-    params = {
-        "apiKey": api_key,
-        "regions": region
-    }
-    try:
-        print(f"Fetching sources from {url} for region {region}")
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching sources from WatchMode API: {e}")
-        return None # Or raise an error
-
-
-def get_genres(api_key):
-    """
-    Fetches all genres available.
-    Returns a list of source objects (dictionaries).
-    """
-    url = f'{WATCHMODE_HOSTNAME}/v1/genres/'
-    params = {
-        "apiKey": api_key
-    }
-    try:
-        print(f"Fetching genres from {url}")
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching genres from WatchMode API: {e}")
-        return None # Or raise an error
-
-
-def save_sources_to_dynamodb(sources_list):
-    """
-    Saves the list of source objects to DynamoDB.
-    Each source object is a dictionary.
-    """
-    if not table:
-        print("DynamoDB table not available for saving sources.")
-        # Potentially raise an error or handle as a critical failure
-        return
-
-    for source_item in sources_list:
-        try:
-            if not isinstance(source_item, dict) or 'id' not in source_item or 'name' not in source_item:
-                print(f"Skipping invalid source_item: {source_item}")
-                continue
-
-            item_to_save = {
-                'PK': f'source:{source_item["id"]}',
-                'SK': source_item["name"],
-                'data': source_item
-            }
-            table.put_item(Item=item_to_save)
-            print(f"Saved source: {source_item['name']} (ID: {source_item['id']})")
-        except ClientError as e:
-            print(f"Error saving source {source_item.get('name', 'UNKNOWN')} to DynamoDB: {e}")
-        except Exception as e:
-            print(f"Unexpected error saving source {source_item.get('name', 'UNKNOWN')}: {e}")
-
-
-def save_genres_to_dynamodb(genres_list):
-    """
-    Saves the list of genre objects to DynamoDB.
-    Each genre object is a dictionary.
-    """
-    if not table:
-        print("DynamoDB table not available for saving genres.")
-        # Potentially raise an error or handle as a critical failure
-        return
-
-    for genre_item in genres_list:
-        try:
-            # Assuming genre items have 'id' and 'name'
-            if not isinstance(genre_item, dict) or 'id' not in genre_item or 'name' not in genre_item:
-                print(f"Skipping invalid genre_item: {genre_item}")
-                continue
-
-            item_to_save = {
-                'PK': f'genre:{genre_item["id"]}',
-                'SK': genre_item["name"],
-                'data': genre_item
-            }
-            table.put_item(Item=item_to_save)
-            print(f"Saved genre: {genre_item['name']} (ID: {genre_item['id']})")
-        except ClientError as e:
-            print(f"Error saving genre {genre_item.get('name', 'UNKNOWN')} to DynamoDB: {e}")
+    return {'statusCode': status_code, 'body': json.dumps({'messages': messages})}
