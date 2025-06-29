@@ -1,3 +1,5 @@
+# /resources/user-preferences.yaml
+
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: "API and Lambda for managing user preferences"
@@ -11,22 +13,131 @@ Parameters:
     Type: String
 
 Resources:
-  # The API Gateway defined by our OpenAPI spec
+  # The API Gateway, with the OpenAPI spec now inlined for validation.
   PreferencesApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
-      DefinitionBody:
-        'Fn::Transform':
-          Name: 'AWS::Include'
-          Parameters:
-            Location: ./user-preferences-api-simple.yaml
-#            Location: ./user-preferences-api.yaml
       Auth:
-        DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !Ref UserPoolArn
+      DefinitionBody:
+        openapi: "3.0.1"
+        info:
+          title: "UK TV Guide User Preferences API"
+          version: "1.0"
+        paths:
+          /preferences:
+            get:
+              summary: "Get the authenticated user's preferences"
+              security:
+                - CognitoAuthorizer: []
+              x-amazon-apigateway-integration:
+                type: "aws_proxy"
+                httpMethod: "POST"
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UserPreferencesFunction.Arn}/invocations"
+              responses:
+                "200":
+                  description: "A list of the user's preferences"
+                  content:
+                    application/json:
+                      schema:
+                        $ref: "#/components/schemas/UserPreferences"
+            put:
+              summary: "Set or replace the authenticated user's preferences"
+              security:
+                - CognitoAuthorizer: []
+              x-amazon-apigateway-integration:
+                type: "aws_proxy"
+                httpMethod: "POST"
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UserPreferencesFunction.Arn}/invocations"
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      $ref: "#/components/schemas/UserPreferences"
+              responses:
+                "204":
+                  description: "Preferences updated successfully"
+          /sources:
+            get:
+              summary: "Get all available streaming sources"
+              x-amazon-apigateway-integration:
+                type: "aws_proxy"
+                httpMethod: "POST"
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UserPreferencesFunction.Arn}/invocations"
+              responses:
+                "200":
+                  description: "A list of all available sources"
+                  content:
+                    application/json:
+                      schema:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Source"
+          /genres:
+            get:
+              summary: "Get all available genres"
+              x-amazon-apigateway-integration:
+                type: "aws_proxy"
+                httpMethod: "POST"
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UserPreferencesFunction.Arn}/invocations"
+              responses:
+                "200":
+                  description: "A list of all available genres"
+                  content:
+                    application/json:
+                      schema:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Genre"
+        components:
+          securitySchemes:
+            CognitoAuthorizer:
+              type: apiKey
+              name: Authorization
+              in: header
+              x-amazon-apigateway-authtype: cognito_user_pools
+          schemas:
+            UserPreferences:
+              type: object
+              properties:
+                sources:
+                  type: array
+                  items:
+                    type: string
+                    description: "The PK of the source (e.g., source:203)"
+                genres:
+                  type: array
+                  items:
+                    type: string
+                    description: "The PK of the genre (e.g., genre:4)"
+            Source:
+              type: object
+              properties:
+                id:
+                  type: integer
+                name:
+                  type: string
+                type:
+                  type: string
+                regions:
+                  type: array
+                  items:
+                    type: string
+            Genre:
+              type: object
+              properties:
+                id:
+                  type: integer
+                name:
+                  type: string
 
   # The Lambda function that backs the API
   UserPreferencesFunction:
@@ -40,13 +151,6 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ProgramDataTableName
-      Events:
-        ApiEvent:
-          Type: Api
-          Properties:
-            RestApiId: !Ref PreferencesApi
-            Path: /{proxy+}
-            Method: ANY
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref ProgramDataTableName
