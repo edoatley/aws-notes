@@ -16,6 +16,18 @@ Parameters:
     Type: String
     Description: "The Hostname for WatchMode API"
     Default: "https://api.watchmode.com"
+  TestUserName:
+    Type: String
+    Description: "The username of the pre-created test user"
+    Default: "test.user@example.com"
+  CreateDataStream:
+    Type: String
+    Description: "Set to 'true' to create the Kinesis Data Stream. False if saving money and don't want to yet!"
+    Default: "false"
+    AllowedValues: [ "true", "false" ]
+
+Conditions:
+  ShouldCreateDataStream: !Equals [ !Ref CreateDataStream, "true" ]
 
 Resources:
   LambdaCodeBucket:
@@ -48,24 +60,57 @@ Resources:
 #      StreamSpecification:
 #        StreamViewType: NEW_AND_OLD_IMAGES
 
-#  # Kinesis Data Stream for incoming data
-#  ProgrammeDataStream:
-#    Type: AWS::Kinesis::Stream
-#    Properties:
-#      StreamModeDetails:
-#        StreamMode: ON_DEMAND
+  ProgrammeDataStream:
+    Type: AWS::Kinesis::Stream
+    Condition: ShouldCreateDataStream
+    Properties:
+      StreamModeDetails:
+        StreamMode: ON_DEMAND
+
+  # Cognito User Pool and Client
+  UserPreferencesUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AWS::StackName}-UserPool"
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+
+  UserPreferencesUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${AWS::StackName}-AppClient"
+      UserPoolId: !Ref UserPreferencesUserPool
+      GenerateSecret: false # Recommended for browser-based/mobile apps
+
+  TestUser:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      UserPoolId: !Ref UserPreferencesUserPool
+      Username: !Ref TestUserName
+      UserAttributes:
+        - Name: email
+          Value: !Ref TestUserName
+        - Name: email_verified
+          Value: "true"
 
   # Nested application for the Periodic Ingestion Lambda
+    # In your PeriodicIngestionApp resource
   PeriodicIngestionApp:
     Type: AWS::Serverless::Application
     Properties:
       Location: periodic-ingestion.yaml
       Parameters:
-#        ProgrammeDataStreamName: !Ref ProgrammeDataStream
-#        ProgrammeDataStreamArn: !GetAtt ProgrammeDataStream.Arn
-        ProgrammeDataStreamName: "dummy-kinesis-stream-name" # <--- DUMMY VALUE
-        ProgrammeDataStreamArn: "arn:aws:kinesis:eu-west-2:123456789012:stream/dummy-kinesis-stream" # <--- DUMMY VALUE
-
+        ProgrammeDataStreamName: !If [ShouldCreateDataStream, !Ref ProgrammeDataStream, ""]
+        ProgrammeDataStreamArn: !If [ShouldCreateDataStream, !GetAtt ProgrammeDataStream.Arn, ""]
 
   # Nested application for the Periodic Reference Data Lambda
   PeriodicReferenceApp:
@@ -77,3 +122,25 @@ Resources:
         ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
         WatchModeApiKeySecretArn: !Ref WatchModeApiKeySecret
         WatchModeHostname: !Ref WatchModeHostname
+
+  # Nested application for the User Preferences API Lambda
+  UserPreferencesApp:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: user-preferences.yaml
+      Parameters:
+        ProgramDataTableName: !Ref ProgrammesTable
+        ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
+        UserPoolArn: !GetAtt UserPreferencesUserPool.Arn # Pass the User Pool ARN to the nested app
+
+
+Outputs:
+  UserPoolId:
+    Description: "The ID of the Cognito User Pool"
+    Value: !Ref UserPreferencesUserPool
+  UserPoolClientId:
+    Description: "The ID of the Cognito User Pool App Client"
+    Value: !Ref UserPreferencesUserPoolClient
+  TestUsername:
+    Description: "The username of the pre-created test user"
+    Value: !Ref TestUserName

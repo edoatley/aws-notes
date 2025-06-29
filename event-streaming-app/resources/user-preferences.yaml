@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: "API and Lambda for managing user preferences"
+
+Parameters:
+  ProgramDataTableName:
+    Type: String
+  ProgramDataTableArn:
+    Type: String
+  UserPoolArn:
+    Type: String
+
+Resources:
+  # The API Gateway defined by our OpenAPI spec
+  PreferencesApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      DefinitionBody:
+        'Fn::Transform':
+          Name: 'AWS::Include'
+          Parameters:
+            Location: ./user-preferences-api-simple.yaml
+#            Location: ./user-preferences-api.yaml
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !Ref UserPoolArn
+
+  # The Lambda function that backs the API
+  UserPreferencesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: preferences.lambda_handler
+      Runtime: python3.12
+      CodeUri: ../src/user_preferences/
+      MemorySize: 256
+      Timeout: 30
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ProgramDataTableName
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PreferencesApi
+            Path: /{proxy+}
+            Method: ANY
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref ProgramDataTableName
+
+Outputs:
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL for the Prod stage"
+    Value: !Sub "https://${PreferencesApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+  UserPoolId:
+    Description: "ID of the Cognito User Pool"
+    Value: !Select [1, !Split ['/', !Ref UserPoolArn]]

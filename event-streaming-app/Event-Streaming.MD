@@ -405,7 +405,22 @@ which means when we add the next lambda it will be trivial.
 This is very similar to the previous two lambdas in many ways except this time we need to have API Gateway fronting the 
 lambda and ideally a pool of user personas we can use to test it out. 
 
-Firstly let's create our [CloudFormation template](./resources/user-preferences.yaml) 
+The API is going to be defined in the following [OpenAPI specification](./resources/user-preferences-api.yaml). 
+As you can see the endpoints provided are:
+
+- `GET /preferences` - get the users preferences
+- `PUT /preferences` - update the users preferences
+- `GET /sources` - list the available sources
+- `GET /genres` - list the available genres
+
+In the [main CFN template](./resources/uktv-event-streaming-app.yaml) we have added both:
+
+- `AWS::Cognito::UserPool`
+- `AWS::Cognito::UserPoolClient`
+
+and we have created a Lambda to handle the API requests in [user_preferences/preferences.py](./src/user_preferences/preferences.py)
+
+To test this we first need a Cognito user which requires us to:
 
 
 
