@@ -413,16 +413,71 @@ As you can see the endpoints provided are:
 - `GET /sources` - list the available sources
 - `GET /genres` - list the available genres
 
-In the [main CFN template](./resources/uktv-event-streaming-app.yaml) we have added both:
+In the [main CFN template](./resources/uktv-event-streaming-app.yaml) we have added:
 
 - `AWS::Cognito::UserPool`
 - `AWS::Cognito::UserPoolClient`
+- `AWS::Cognito::UserPoolUser`
 
 and we have created a Lambda to handle the API requests in [user_preferences/preferences.py](./src/user_preferences/preferences.py)
 
-To test this we first need a Cognito user which requires us to:
+We can now deploy our stack with `sam deploy` which works with this output:
 
+```output
+CloudFormation outputs from deployed stack
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Outputs                                                                                                                                                                                                    
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Key                 TestUsername                                                                                                                                                                           
+Description         The username of the pre-created test user                                                                                                                                              
+Value               test.user@example.com                                                                                                                                                                  
 
+Key                 UserPoolClientId                                                                                                                                                                       
+Description         The ID of the Cognito User Pool App Client                                                                                                                                             
+Value               2lcrrfq92ikt67acq3ibceiq7b                                                                                                                                                             
+
+Key                 UserPoolId                                                                                                                                                                             
+Description         The ID of the Cognito User Pool                                                                                                                                                        
+Value               eu-west-2_Re96F4z3a                                                                                                                                                                    
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Successfully created/updated stack - uktv-event-streaming-app in eu-west-2
+```
+
+Note: for now I have the OpenAPI spec inline in [CloudFormation](./resources/user-preferences.yaml) as hit issues with
+`AWS::Include`
+
+The next step is to create some test events to try it out:
+
+```bash
+# Test getting sources
+sam local invoke UserPreferencesFunction --event events/user-preferences/get-sources.json
+
+# Test getting genres
+sam local invoke UserPreferencesFunction --event events/user-preferences/get-genres.json
+
+# Test getting user preferences
+sam local invoke UserPreferencesFunction --event events/user-preferences/get-preferences.json
+
+# Test updating user preferences
+sam local invoke UserPreferencesFunction --event events/user-preferences/put-preferences.json
+```
+
+which gives this output:
+
+```output
+
+```
+
+We can now try against the deployed lambdas:
+
+```bash
+# Test getting sources
+sam remote invoke UserPreferencesFunction --stack-name uktv-event-streaming-app --event-file events/user-preferences/get-sources.json
+
+# Test getting genres
+sam remote invoke UserPreferencesFunction --stack-name uktv-event-streaming-app --event-file events/user-preferences/get-genres.json
+```
 
 ## Cleanup
 
