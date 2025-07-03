@@ -3,6 +3,7 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 import logging
+import decimal
 
 # Configure logger
 logger = logging.getLogger()
@@ -17,19 +18,30 @@ SOURCE_PREFIX = 'source:'
 GENRE_PREFIX = 'genre:'
 
 # Global AWS clients
-dynamodb_resource = None
-table=None
+table = None
 
 # Initialization block
 try:
     if not DYNAMODB_TABLE_NAME:
         raise EnvironmentError("DYNAMODB_TABLE_NAME environment variable must be set.")
-    # Using the resource API can be simpler for data operations
-    dynamodb_resource = boto3.resource('dynamodb')
-    table = dynamodb_resource.Table(DYNAMODB_TABLE_NAME)
+    table = boto3.resource('dynamodb').Table(DYNAMODB_TABLE_NAME)
 except (EnvironmentError, ClientError) as e:
-    logger.error(f"Initialization error: {e}")
+    logger.error(f"Initialization error: {e}", exc_info=True)
     raise
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """
+    Custom JSON Encoder to handle DynamoDB's Decimal type
+    """
+    def default(self, o):
+        if isinstance(o, decimal.Decimal):
+            if o % 1 == 0:
+                return int(o)
+            else:
+                return float(o)
+        return super(DecimalEncoder, self).default(o)
+
 
 def build_response(status_code, body):
     """Helper to build API Gateway proxy response."""
@@ -37,25 +49,20 @@ def build_response(status_code, body):
         "statusCode": status_code,
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*", # Good practice for public APIs
+            "Access-Control-Allow-Origin": "*",
         },
-        "body": json.dumps(body)
+        "body": json.dumps(body, cls=DecimalEncoder)
     }
 
 def get_entities(pk_prefix: str):
     """Scans DynamoDB for entities with a given PK prefix (e.g., 'source:')."""
     try:
-
-        # Scan is okay for small reference tables, but use Query for larger datasets
         response = table.scan(
             FilterExpression="begins_with(PK, :pk_prefix)",
             ExpressionAttributeValues={":pk_prefix": pk_prefix}
         )
-
-        # This correctly returns an empty list if no items are found
         items = response.get('Items', [])
 
-        # Continue scanning if the table is large and results are paginated
         while 'LastEvaluatedKey' in response:
             response = table.scan(
                 FilterExpression="begins_with(PK, :pk_prefix)",
@@ -64,7 +71,6 @@ def get_entities(pk_prefix: str):
             )
             items.extend(response.get('Items', []))
 
-        # Return 200 OK with the list of items (which could be empty)
         return build_response(200, items)
 
     except ClientError as e:
@@ -72,10 +78,10 @@ def get_entities(pk_prefix: str):
             logger.error(f"Error: Table '{DYNAMODB_TABLE_NAME}' not found.")
             return build_response(500, {"error": "Internal server configuration error."})
         else:
-            logger.error(f"DynamoDB ClientError getting entities: {e}")
+            logger.error(f"DynamoDB ClientError getting entities: {e}", exc_info=True)
             return build_response(500, {"error": "Could not retrieve data."})
     except Exception as e:
-        logger.error(f"Unexpected error getting entities: {e}")
+        logger.error(f"Unexpected error getting entities: {e}", exc_info=True)
         return build_response(500, {"error": "An unexpected error occurred."})
 
 def get_user_preferences(user_id: str):
@@ -88,12 +94,13 @@ def get_user_preferences(user_id: str):
         preferences = {"sources": [], "genres": []}
         for item in response.get('Items', []):
             sk = item.get('SK', '')
+            pref_id = sk.split(':', 1)[1]
             if sk.startswith(SOURCE_PREFIX):
-                preferences["sources"].append(sk)
+                preferences["sources"].append(pref_id)
             elif sk.startswith(GENRE_PREFIX):
-                preferences["genres"].append(sk)
+                preferences["genres"].append(pref_id)
 
-        return build_response(200, preferences) #
+        return build_response(200, preferences)
     except ClientError as e:
         logger.error(f"DynamoDB error getting preferences for user {user_id}: {e}", exc_info=True)
         return build_response(500, {'error': 'Could not retrieve preferences'})
@@ -101,33 +108,29 @@ def get_user_preferences(user_id: str):
 def set_user_preferences(user_id: str, body: dict):
     """Deletes all existing preferences and sets new ones for a user."""
     pk = f'userpref:{user_id}'
-    new_sources = body.get('sources', [])
-    new_genres = body.get('genres', [])
+    new_source_ids = body.get('sources', [])
+    new_genre_ids = body.get('genres', [])
 
     try:
-        # 1. Find all existing preferences to delete them
         existing_items_response = table.query(KeyConditionExpression=boto3.dynamodb.conditions.Key('PK').eq(pk))
 
-        # 2. Use BatchWriter for efficient delete and put operations
         with table.batch_writer() as batch:
-            # Delete old items
             for item in existing_items_response.get('Items', []):
                 batch.delete_item(Key={'PK': item['PK'], 'SK': item['SK']})
                 logger.info(f"Queueing delete for user {user_id}, item {item['SK']}")
 
-            # Add new source preferences
-            for source_sk in new_sources:
-                # Basic validation
-                if isinstance(source_sk, str) and source_sk.startswith(SOURCE_PREFIX):
-                    batch.put_item(Item={'PK': pk, 'SK': source_sk})
-                    logger.info(f"Queueing put for user {user_id}, source {source_sk}")
+            for source_id in new_source_ids:
+                if isinstance(source_id, str):
+                    full_sk = f'{SOURCE_PREFIX}{source_id}'
+                    batch.put_item(Item={'PK': pk, 'SK': full_sk})
+                    logger.info(f"Queueing put for user {user_id}, source {full_sk}")
 
-            # Add new genre preferences
-            for genre_sk in new_genres:
-                if isinstance(genre_sk, str) and genre_sk.startswith(GENRE_PREFIX):
-                    batch.put_item(Item={'PK': pk, 'SK': genre_sk})
-                    logger.info(f"Queueing put for user {user_id}, genre {genre_sk}")
-    except ClientError as e: # Before: except:
+            for genre_id in new_genre_ids:
+                if isinstance(genre_id, str):
+                    full_sk = f'{GENRE_PREFIX}{genre_id}'
+                    batch.put_item(Item={'PK': pk, 'SK': full_sk})
+                    logger.info(f"Queueing put for user {user_id}, genre {full_sk}")
+    except ClientError as e:
         logger.error(f"DynamoDB error setting preferences for user {user_id}: {e}", exc_info=True)
         return build_response(500, {'error': 'Could not set preferences'})
     except Exception as e:
@@ -157,12 +160,10 @@ def lambda_handler(event, context):
         return get_entities(GENRE_PREFIX)
 
     elif path == '/preferences':
-        # get the userid of the authenticated user from the event
         try:
-            # Safely access nested keys
             user_id = event.get('requestContext', {}).get('authorizer', {}).get('claims', {}).get('sub')
             if not user_id:
-                logger.error("User ID not found in authorizer claims.")
+                logger.warning("User ID not found in authorizer claims.")
                 return build_response(401, {"error": "Unauthorized"})
         except Exception:
             logger.error("Could not parse user ID from event.", exc_info=True)

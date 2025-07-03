@@ -159,6 +159,9 @@ Outputs:
   ApiEndpoint:
     Description: "API Gateway endpoint URL for the Prod stage"
     Value: !Sub "https://${PreferencesApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
-  UserPoolId:
-    Description: "ID of the Cognito User Pool"
-    Value: !Select [1, !Split ['/', !Ref UserPoolArn]]
+  UserPreferencesFunctionName:
+    Description: "Name of the User Preferences Lambda function"
+    Value: !Ref UserPreferencesFunction
+  UserPreferencesFunctionArn:
+    Description: "ARN of the User Preferences Lambda function"
+    Value: !GetAtt UserPreferencesFunction.Arn

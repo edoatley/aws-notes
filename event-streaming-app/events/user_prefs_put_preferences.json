@@ -6,7 +6,7 @@
     "Content-Type": "application/json",
     "Authorization": "ey...<a_valid_jwt_token>...tQ"
   },
-  "body": "{\"sources\": [\"source:203\", \"source:349\"], \"genres\": [\"genre:4\", \"genre:6\"]}",
+  "body": "{\"sources\": [\"203\", \"349\"], \"genres\": [\"4\", \"6\"]}",
   "isBase64Encoded": false,
   "requestContext": {
     "httpMethod": "PUT",

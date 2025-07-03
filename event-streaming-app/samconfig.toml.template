@@ -11,6 +11,17 @@ parallel = true
 [default.validate.parameters]
 template_file = "resources/uktv-event-streaming-app.yaml"
 
+# sam local-invoke command
+[default.local_invoke.parameters]
+env_vars="env/local-secrets.json"
+profile = "<PROFILE NAME>"
+region = "eu-west-2"
+
+# sam remote invoke command
+[default.remote_invoke.parameters]
+profile = "<PROFILE NAME>"
+region = "eu-west-2"
+
 # sam deploy command
 [default.deploy.parameters]
 stack_name = "uktv-event-streaming-app"

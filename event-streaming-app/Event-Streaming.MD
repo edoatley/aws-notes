@@ -12,19 +12,20 @@
   * [Step 4 - WatchMode initial integration](#step-4---watchmode-initial-integration)
     * [Sources](#sources)
     * [Genres](#genres)
-  * [Step 5 - Preferences API](#step-5---preferences-api)
+  * [Step 5 - SAM Project cleanup](#step-5---sam-project-cleanup)
+  * [Step 6 - Preferences API](#step-6---preferences-api)
   * [Cleanup](#cleanup)
 <!-- TOC -->
 
 ## Rough plan
 
-- Store TV reference data: A Lambda function will periodically fetch reference data and store in DynamoDB for use within the application
-- A Simple RESTful API exposed via API Gateway and backed by a lambda that stores a users preferences.  
-- Ingest TV and streaming data: A Lambda function will periodically fetch the latest TV schedules and streaming availability for the UK from an external API.
-- Process and enrich the data: The raw data will be sent to a Kinesis Data Stream for real-time processing. Another Lambda function will consume this data, clean it, and potentially enrich it with additional information (e.g., ratings from another source).
-- Store the program guide: The processed data will be stored in a DynamoDB table, optimized for efficient querying of shows, channels, and streaming services.
-- Real-time updates: DynamoDB Streams will capture any changes to the program data (e.g., a schedule update). A final Lambda function will be triggered by these streams to, for example, send notifications for favorited shows.
-- Provide a simple user interface: While the backend is the focus, a simple frontend (e.g., a static website hosted on S3) can be created to query the DynamoDB table via an API Gateway endpoint and display the TV guide.
+- [x] Store TV reference data: A Lambda function will periodically fetch reference data and store in DynamoDB for use within the application
+- [x] A Simple RESTful API exposed via API Gateway and backed by a lambda that stores a users preferences.  
+- [ ] Ingest TV and streaming data: A Lambda function will periodically fetch the latest TV schedules and streaming availability for the UK from an external API.
+- [ ] Process and enrich the data: The raw data will be sent to a Kinesis Data Stream for real-time processing. Another Lambda function will consume this data, clean it, and potentially enrich it with additional information (e.g., ratings from another source).
+- [ ] Store the program guide: The processed data will be stored in a DynamoDB table, optimized for efficient querying of shows, channels, and streaming services.
+- [ ] Real-time updates: DynamoDB Streams will capture any changes to the program data (e.g., a schedule update). A final Lambda function will be triggered by these streams to, for example, send notifications for favorited shows.
+- [ ] Provide a simple user interface: While the backend is the focus, a simple frontend (e.g., a static website hosted on S3) can be created to query the DynamoDB table via an API Gateway endpoint and display the TV guide.
 
 ## Step 1 - Initial set up
 
@@ -459,27 +460,35 @@ sam local invoke UserPreferencesFunction --event events/user_prefs_get_sources.j
 # Test getting genres
 sam local invoke UserPreferencesFunction --event events/user_prefs_get_genres.json --env-vars ./env/user_preferences.json
 
-# Test getting user preferences
+# Test getting user preferences (expect none first time)
 sam local invoke UserPreferencesFunction --event events/user_prefs_get_preferences.json --env-vars ./env/user_preferences.json
 
 # Test updating user preferences
 sam local invoke UserPreferencesFunction --event events/user_prefs_put_preferences.json --env-vars ./env/user_preferences.json
+
+# Test getting user preferences (expect ones we just put)
+sam local invoke UserPreferencesFunction --event events/user_prefs_get_preferences.json --env-vars ./env/user_preferences.json
 ```
 
-which gives this output:
+which gives this output for the PUT and GET:
 
 ```output
-
+{"statusCode": 204, "headers": {"Access-Control-Allow-Origin": "*"}}
+{"statusCode": 200, "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"}, "body": "{\"sources\": [\"203\", \"349\"], \"genres\": [\"4\", \"6\"]}"}
 ```
 
 We can now try against the deployed lambdas:
 
 ```bash
-# Test getting sources
-sam remote invoke UserPreferencesFunction --stack-name uktv-event-streaming-app --event-file events/user-preferences/get-sources.json
+# Test setting preferences - note the nesting of the function in the app for the invoked lambda  
+sam remote invoke UserPreferencesApp/UserPreferencesFunction  \ 
+  --stack-name uktv-event-streaming-app \
+  --event-file events/user_prefs_put_preferences.json
 
-# Test getting genres
-sam remote invoke UserPreferencesFunction --stack-name uktv-event-streaming-app --event-file events/user-preferences/get-genres.json
+# Test getting preferences 
+sam remote invoke UserPreferencesApp/UserPreferencesFunction \
+  --stack-name uktv-event-streaming-app \
+  --event-file events/user_prefs_get_preferences.json
 ```
 
 Note: I did hit some issues with referencing the API key within the lambda. To resolve this I created a file called `env/local-secrets.json`
@@ -504,6 +513,16 @@ I then added this content to the file:
 ```
 
 and added `env/local-secrets.json` to `.gitignore`
+
+## Step 7 - Call API to get some shows for all known genres and source
+
+We now have user preferences for source and genre saved and we must retrieve the shows these provide. 
+
+Reviewing the Watchmode docs 
+
+## Step 8 - schedule the API calls to get the shows and make it efficient
+
+
 
 ## Cleanup
 
