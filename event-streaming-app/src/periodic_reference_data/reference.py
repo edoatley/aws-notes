@@ -21,7 +21,7 @@ DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
 WATCHMODE_HOSTNAME = os.environ.get('WATCHMODE_HOSTNAME')
 WATCHMODE_API_KEY_SECRET_ARN = os.environ.get('WATCHMODE_API_KEY_SECRET_ARN')
 # New: Allow direct API key for local testing
-WATCHMODE_API_KEY_DIRECT = os.environ.get('WATCHMODE_API_KEY')
+WATCHMODE_API_KEY = os.environ.get('WATCHMODE_API_KEY')
 
 # Global AWS clients and fetched API key
 dynamodb_resource = None
@@ -38,12 +38,15 @@ try:
 
     dynamodb_resource = boto3.resource('dynamodb')
     table = dynamodb_resource.Table(DYNAMODB_TABLE_NAME)
-    logger.info(f"Successfully initialized DynamoDB table: {DYNAMODB_TABLE_NAME}")
+    if not table:
+        raise EnvironmentError(f"DynamoDB table not found: {DYNAMODB_TABLE_NAME}")
+    else:
+        logger.info(f"Successfully initialized DynamoDB table: {DYNAMODB_TABLE_NAME}")
 
-    if WATCHMODE_API_KEY_SECRET_ARN and not WATCHMODE_API_KEY_DIRECT:
+    if WATCHMODE_API_KEY_SECRET_ARN and not WATCHMODE_API_KEY:
         secrets_manager_client = boto3.client('secretsmanager')
         logger.info("Successfully initialized Secrets Manager client.")
-    elif WATCHMODE_API_KEY_DIRECT:
+    elif WATCHMODE_API_KEY:
         logger.info("Direct API key provided; Secrets Manager client not initialized.")
     else:
         # This case (no direct key, no secret ARN) will be caught by get_watchmode_api_key_secret
@@ -66,9 +69,9 @@ def get_watchmode_api_key_secret() -> str:
     if _cached_watchmode_api_key:
         return _cached_watchmode_api_key
 
-    if WATCHMODE_API_KEY_DIRECT:
-        logger.info("Using direct API key from WATCHMODE_API_KEY_DIRECT.")
-        _cached_watchmode_api_key = WATCHMODE_API_KEY_DIRECT
+    if WATCHMODE_API_KEY:
+        logger.info("Using direct API key from WATCHMODE_API_KEY.")
+        _cached_watchmode_api_key = WATCHMODE_API_KEY
         return _cached_watchmode_api_key
 
     if not WATCHMODE_API_KEY_SECRET_ARN:
@@ -136,27 +139,23 @@ def _save_items_to_dynamodb(items_list: list, item_type_prefix: str, item_type_n
         logger.info(f"No {item_type_name} items provided to save.")
         return True # Operation considered successful as there's nothing to do
 
-    operation_attempted = False
-    for item in items_list:
-        operation_attempted = True
-        try:
-            if not isinstance(item, dict) or 'id' not in item or 'name' not in item:
-                logger.warning(f"Skipping invalid {item_type_name}_item (missing id or name): {item}")
-                continue
-
-            item_to_save = {
-                PK_FIELD: f'{item_type_prefix}{item["id"]}',
-                SK_FIELD: item["name"],
-                DATA_FIELD: item
-            }
-            table.put_item(Item=item_to_save)
-            logger.info(f"Saved {item_type_name}: {item['name']} (ID: {item['id']})")
-        except ClientError as e:
-            logger.error(f"DynamoDB error saving {item_type_name} {item.get('name', 'UNKNOWN')}: {e}", exc_info=True)
-            # Depending on requirements, you might want to collect these errors and affect the overall return status
-        except Exception as e:
-            logger.error(f"Unexpected error saving {item_type_name} {item.get('name', 'UNKNOWN')}: {e}", exc_info=True)
-    return operation_attempted
+    try:
+        with table.batch_writer() as batch:
+            for item in items_list:
+                if not isinstance(item, dict) or 'id' not in item or 'name' not in item:
+                    logger.warning(f"Skipping invalid {item_type_name}_item: {item}")
+                    continue
+                item_to_save = {
+                    PK_FIELD: f'{item_type_prefix}{item["id"]}',
+                    SK_FIELD: item["name"],
+                    DATA_FIELD: item
+                }
+                batch.put_item(Item=item_to_save)
+        logger.info(f"Successfully saved {len(items_list)} {item_type_name} items to DynamoDB.")
+        return True
+    except ClientError as e:
+        logger.error(f"DynamoDB batch write error for {item_type_name}s: {e}", exc_info=True)
+        return False
 
 
 def save_sources_to_dynamodb(sources_list: list):
@@ -167,6 +166,12 @@ def save_sources_to_dynamodb(sources_list: list):
 def save_genres_to_dynamodb(genres_list: list):
     """Saves the list of genre objects to DynamoDB."""
     return _save_items_to_dynamodb(genres_list, GENRE_PREFIX, "genre")
+
+# def debugEnvironment():
+#     logger.info(f'DYNAMODB_TABLE_NAME {DYNAMODB_TABLE_NAME}')
+#     logger.info(f'WATCHMODE_HOSTNAME {WATCHMODE_HOSTNAME}')
+#     logger.info(f'WATCHMODE_API_KEY_SECRET_ARN {WATCHMODE_API_KEY_SECRET_ARN}')
+#     logger.info(f'WATCHMODE_API_KEY {WATCHMODE_API_KEY}')
 
 
 def lambda_handler(event, context):
