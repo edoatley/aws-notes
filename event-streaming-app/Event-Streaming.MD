@@ -450,12 +450,8 @@ Note: for now I have the OpenAPI spec inline in [CloudFormation](./resources/use
 The next step is to create some test events to try it out:
 
 ```bash
-# Login and set default profile
-aws sso login --profile streaming 
-export AWS_PROFILE=streaming
-
 # call the PeriodicUKTVReferenceFunction to ensure there is data
-sam local invoke PeriodicUKTVReferenceFunction --event events/periodic_reference.json --env-vars ./env/periodic_reference.json
+sam local invoke PeriodicReferenceFunction --event events/periodic_reference.json --env-vars ./env/periodic_reference.json
 
 # Test getting sources
 sam local invoke UserPreferencesFunction --event events/user_prefs_get_sources.json --env-vars ./env/user_preferences.json
@@ -485,6 +481,29 @@ sam remote invoke UserPreferencesFunction --stack-name uktv-event-streaming-app 
 # Test getting genres
 sam remote invoke UserPreferencesFunction --stack-name uktv-event-streaming-app --event-file events/user-preferences/get-genres.json
 ```
+
+Note: I did hit some issues with referencing the API key within the lambda. To resolve this I created a file called `env/local-secrets.json`
+and referenced it in my `samconfig.toml`:
+
+```toml
+[default.local_invoke.parameters]
+env_vars="env/local-secrets.json"
+profile = "streaming"
+region = "eu-west-2"
+```
+
+I then added this content to the file:
+
+```json
+{
+  "Parameters": {
+    "WATCHMODE_API_KEY_SECRET_ARN": "",
+    "WATCHMODE_API_KEY": "<actual API key>"
+  }
+}
+```
+
+and added `env/local-secrets.json` to `.gitignore`
 
 ## Cleanup
 
