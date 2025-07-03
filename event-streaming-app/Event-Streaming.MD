@@ -450,17 +450,24 @@ Note: for now I have the OpenAPI spec inline in [CloudFormation](./resources/use
 The next step is to create some test events to try it out:
 
 ```bash
+# Login and set default profile
+aws sso login --profile streaming 
+export AWS_PROFILE=streaming
+
+# call the PeriodicUKTVReferenceFunction to ensure there is data
+sam local invoke PeriodicUKTVReferenceFunction --event events/periodic_reference.json --env-vars ./env/periodic_reference.json
+
 # Test getting sources
-sam local invoke UserPreferencesFunction --event events/user-preferences/get-sources.json
+sam local invoke UserPreferencesFunction --event events/user_prefs_get_sources.json --env-vars ./env/user_preferences.json
 
 # Test getting genres
-sam local invoke UserPreferencesFunction --event events/user-preferences/get-genres.json
+sam local invoke UserPreferencesFunction --event events/user_prefs_get_genres.json --env-vars ./env/user_preferences.json
 
 # Test getting user preferences
-sam local invoke UserPreferencesFunction --event events/user-preferences/get-preferences.json
+sam local invoke UserPreferencesFunction --event events/user_prefs_get_preferences.json --env-vars ./env/user_preferences.json
 
 # Test updating user preferences
-sam local invoke UserPreferencesFunction --event events/user-preferences/put-preferences.json
+sam local invoke UserPreferencesFunction --event events/user_prefs_put_preferences.json --env-vars ./env/user_preferences.json
 ```
 
 which gives this output:

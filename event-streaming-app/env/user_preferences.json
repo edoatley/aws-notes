@@ -1,0 +1,5 @@
+{
+  "UserPreferencesFunction": {
+    "DYNAMODB_TABLE_NAME": "UKTVProgrammesLocal"
+  }
+}

@@ -4,3 +4,4 @@ build
 .gradle
 .DS_Store
 samconfig.toml
+local-secrets.json

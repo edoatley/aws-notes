@@ -1,4 +1,3 @@
-# /src/user_preferences/preferences.py
 import json
 import os
 import boto3
@@ -17,22 +16,67 @@ USER_PREF_PREFIX = 'userpref:'
 SOURCE_PREFIX = 'source:'
 GENRE_PREFIX = 'genre:'
 
-# Global AWS clients (initialized once per container)
+# Global AWS clients
 dynamodb_resource = None
-table = None
+table=None
 
 # Initialization block
 try:
     if not DYNAMODB_TABLE_NAME:
         raise EnvironmentError("DYNAMODB_TABLE_NAME environment variable must be set.")
+    # Using the resource API can be simpler for data operations
     dynamodb_resource = boto3.resource('dynamodb')
     table = dynamodb_resource.Table(DYNAMODB_TABLE_NAME)
-    logger.info(f"Successfully initialized DynamoDB table: {DYNAMODB_TABLE_NAME}")
 except (EnvironmentError, ClientError) as e:
-    logger.error(f"Fatal error during initialization: {e}", exc_info=True)
-    # This will cause subsequent invocations to fail until the container is replaced
-    table = None
+    logger.error(f"Initialization error: {e}")
+    raise
 
+def build_response(status_code, body):
+    """Helper to build API Gateway proxy response."""
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*", # Good practice for public APIs
+        },
+        "body": json.dumps(body)
+    }
+
+def get_entities(pk_prefix: str):
+    """Scans DynamoDB for entities with a given PK prefix (e.g., 'source:')."""
+    try:
+
+        # Scan is okay for small reference tables, but use Query for larger datasets
+        response = table.scan(
+            FilterExpression="begins_with(PK, :pk_prefix)",
+            ExpressionAttributeValues={":pk_prefix": pk_prefix}
+        )
+
+        # This correctly returns an empty list if no items are found
+        items = response.get('Items', [])
+
+        # Continue scanning if the table is large and results are paginated
+        while 'LastEvaluatedKey' in response:
+            response = table.scan(
+                FilterExpression="begins_with(PK, :pk_prefix)",
+                ExpressionAttributeValues={":pk_prefix": pk_prefix},
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            items.extend(response.get('Items', []))
+
+        # Return 200 OK with the list of items (which could be empty)
+        return build_response(200, items)
+
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+            logger.error(f"Error: Table '{DYNAMODB_TABLE_NAME}' not found.")
+            return build_response(500, {"error": "Internal server configuration error."})
+        else:
+            logger.error(f"DynamoDB ClientError getting entities: {e}")
+            return build_response(500, {"error": "Could not retrieve data."})
+    except Exception as e:
+        logger.error(f"Unexpected error getting entities: {e}")
+        return build_response(500, {"error": "An unexpected error occurred."})
 
 def get_user_preferences(user_id: str):
     """Gets all preferences for a given user."""
@@ -49,15 +93,14 @@ def get_user_preferences(user_id: str):
             elif sk.startswith(GENRE_PREFIX):
                 preferences["genres"].append(sk)
 
-        return {'statusCode': 200, 'body': json.dumps(preferences)}
+        return build_response(200, preferences) #
     except ClientError as e:
         logger.error(f"DynamoDB error getting preferences for user {user_id}: {e}", exc_info=True)
-        return {'statusCode': 500, 'body': json.dumps({'error': 'Could not retrieve preferences'})}
-
+        return build_response(500, {'error': 'Could not retrieve preferences'})
 
 def set_user_preferences(user_id: str, body: dict):
     """Deletes all existing preferences and sets new ones for a user."""
-    pk = f"{USER_PREF_PREFIX}{user_id}"
+    pk = f'userpref:{user_id}'
     new_sources = body.get('sources', [])
     new_genres = body.get('genres', [])
 
@@ -84,68 +127,55 @@ def set_user_preferences(user_id: str, body: dict):
                 if isinstance(genre_sk, str) and genre_sk.startswith(GENRE_PREFIX):
                     batch.put_item(Item={'PK': pk, 'SK': genre_sk})
                     logger.info(f"Queueing put for user {user_id}, genre {genre_sk}")
-
-        return {'statusCode': 204, 'body': ''} # 204 No Content is appropriate for a successful PUT
-
-    except ClientError as e:
+    except ClientError as e: # Before: except:
         logger.error(f"DynamoDB error setting preferences for user {user_id}: {e}", exc_info=True)
-        return {'statusCode': 500, 'body': json.dumps({'error': 'Could not update preferences'})}
+        return build_response(500, {'error': 'Could not set preferences'})
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while setting preferences for user {user_id}: {e}", exc_info=True)
+        return build_response(500, {'error': 'An unexpected error occurred'})
 
-
-def get_reference_data(prefix: str):
-    """
-    Gets all reference data items (sources or genres) using a Scan.
-    NOTE: For production, a GSI would be more efficient than a Scan.
-    """
-    logger.info(f"Scanning for reference data with prefix: {prefix}")
-    try:
-        response = table.scan(
-            FilterExpression=boto3.dynamodb.conditions.Attr('PK').begins_with(prefix)
-        )
-        # We only want the 'data' attribute from each item
-        items = [item.get('data', {}) for item in response.get('Items', [])]
-        return {'statusCode': 200, 'body': json.dumps(items)}
-    except ClientError as e:
-        logger.error(f"DynamoDB error scanning for {prefix}: {e}", exc_info=True)
-        return {'statusCode': 500, 'body': json.dumps({'error': f'Could not retrieve {prefix} data'})}
-
+    return {
+        "statusCode": 204,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+        }
+    }
 
 def lambda_handler(event, context):
-    """Main handler that routes requests based on the API path."""
-    if not table:
-        # This indicates a catastrophic failure during initialization
-        return {'statusCode': 500, 'body': json.dumps({'error': 'Server is not configured correctly'})}
-
+    """
+    Handles API Gateway requests for user preferences, sources, and genres.
+    """
     logger.info(f"Received event: {json.dumps(event)}")
 
     http_method = event.get('httpMethod')
     path = event.get('path')
 
-    # Preferences endpoints (require authentication)
-    if path == '/preferences':
+    if http_method == 'GET' and path == '/sources':
+        return get_entities(SOURCE_PREFIX)
+
+    elif http_method == 'GET' and path == '/genres':
+        return get_entities(GENRE_PREFIX)
+
+    elif path == '/preferences':
+        # get the userid of the authenticated user from the event
         try:
-            # The user's unique ID from the Cognito token
-            user_id = event['requestContext']['authorizer']['claims']['sub']
-        except (KeyError, TypeError):
-            return {'statusCode': 401, 'body': json.dumps({'error': 'Unauthorized'})}
+            # Safely access nested keys
+            user_id = event.get('requestContext', {}).get('authorizer', {}).get('claims', {}).get('sub')
+            if not user_id:
+                logger.error("User ID not found in authorizer claims.")
+                return build_response(401, {"error": "Unauthorized"})
+        except Exception:
+            logger.error("Could not parse user ID from event.", exc_info=True)
+            return build_response(400, {"error": "Bad request format"})
 
         if http_method == 'GET':
             return get_user_preferences(user_id)
         elif http_method == 'PUT':
             try:
-                body = json.loads(event.get('body', '{}'))
+                body = json.loads(event.get('body') or '{}')
                 return set_user_preferences(user_id, body)
             except json.JSONDecodeError:
-                return {'statusCode': 400, 'body': json.dumps({'error': 'Invalid JSON in request body'})}
+                logger.warning("Received invalid JSON in PUT /preferences body")
+                return build_response(400, {"error": "Invalid JSON format"})
 
-    # Public reference data endpoints
-    elif path == '/sources':
-        if http_method == 'GET':
-            return get_reference_data(SOURCE_PREFIX)
-
-    elif path == '/genres':
-        if http_method == 'GET':
-            return get_reference_data(GENRE_PREFIX)
-
-    # Default response for unhandled paths
-    return {'statusCode': 404, 'body': json.dumps({'error': 'Not Found'})}
+    return build_response(404, {"error": f"Path not found: {http_method} {path}"})
