@@ -88,12 +88,12 @@ components:
           type: array
           items:
             type: string
-            description: "The PK of the source (e.g., source:203)"
+            description: "The simple ID of the source (e.g., '203')"
         genres:
           type: array
           items:
             type: string
-            description: "The PK of the genre (e.g., genre:4)"
+            description: "The simple ID of the genre (e.g., '4')"
     Source:
       type: object
       properties:

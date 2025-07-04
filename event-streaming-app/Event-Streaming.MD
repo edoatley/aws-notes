@@ -58,22 +58,22 @@ aws cloudformation deploy \
 
 ## Step 3 - Periodic Ingestion Lambda (basic deployment)
 
-1. set up this [Periodic Ingestion CloudFormation template](resources/periodic-ingestion.yaml) to deploy the resources
+1. set up this [Periodic Ingestion CloudFormation template](resources/userprefs-title-ingestion.yaml) to deploy the resources
    associated with our first function called **PeriodicUKTVDataIngestionFunction**
 
 2. Built the app using sam:
 
 ```bash
-sam build --template-file ./resources/periodic-ingestion.yaml --profile streaming
+sam build --template-file ./resources/userprefs-title-ingestion.yaml --profile streaming
 ```
 
-3. Run a local test with a [test event](./events/periodic_ingestion.json) and [environment config](./env/periodic_ingestion.json):
+3. Run a local test with a [test event](events/userprefs_title_ingestion.json) and [environment config](env/userprefs_title_ingestion.json):
 
 ```bash
 sam local invoke PeriodicDataIngestionFunction \
-  --template-file ./resources/periodic-ingestion.yaml \
-  --event ./events/periodic_ingestion.json \
-  --env-vars ./env/periodic_ingestion.json \
+  --template-file ./resources/userprefs-title-ingestion.yaml \
+  --event ./events/userprefs_title_ingestion.json \
+  --env-vars ./env/userprefs_title_ingestion.json \
   --profile streaming
 ```
 
@@ -88,7 +88,7 @@ Removing rapid images for repo public.ecr.aws/sam/emulation-python3.9
 Building image..........................
 Using local image: public.ecr.aws/lambda/python:3.9-rapid-x86_64.                                                                                                                                                                                                                                                                                                                                                                         
                                                                                                                                                                                                                                                                                                                                                                                                                                           
-Mounting /Users/edoatley/source/aws-notes/event-streaming-app/src/periodic_ingestion as /var/task:ro,delegated, inside runtime container                                                                                                                                                                                                                                                                                                  
+Mounting /Users/edoatley/source/aws-notes/event-streaming-app/src/userprefs_title_ingestion as /var/task:ro,delegated, inside runtime container                                                                                                                                                                                                                                                                                                  
 START RequestId: 82ff0db6-af9d-485d-b0d5-198c16ac06ce Version: $LATEST
 Received event: {"source": "aws.events", "detail-type": "Scheduled Event", "resources": ["arn:aws:events:eu-west-2:123456789012:rule/DailyUKTVDataIngestionTrigger"], "time": "2024-07-29T10:00:00Z"}
 Kinesis Stream Name from env: ProgrammeDataStream
@@ -162,7 +162,7 @@ Successfully created/updated stack - sam-local-deploy-periodic-ingestion in eu-w
 
 ```bash
 sam remote invoke PeriodicUKTVDataIngestionFunction \
-  --event ./events/periodic_ingestion.json \
+  --event ./events/userprefs_title_ingestion.json \
   --profile streaming  
 ```
 
@@ -170,9 +170,9 @@ which gave the expected output:
 
 ```output
 Invoking Lambda Function PeriodicDataIngestionFunction                                                                                                                                                                                                                                                                                                                                                                                    
-Auto converting value './events/periodic_ingestion.json' into JSON '"./events/periodic_ingestion.json"'. If you don't want auto-conversion, please provide a JSON string as event                                                                                                                                                                                                                                                         
+Auto converting value './events/userprefs_title_ingestion.json' into JSON '"./events/userprefs_title_ingestion.json"'. If you don't want auto-conversion, please provide a JSON string as event                                                                                                                                                                                                                                                         
 START RequestId: 4e8c16d3-8fda-431f-bdc9-119be66c8582 Version: $LATEST
-Received event: "./events/periodic_ingestion.json"
+Received event: "./events/userprefs_title_ingestion.json"
 Kinesis Stream Name from env: ProgrammeDataStream
 Successfully sent data to Kinesis. SequenceNumber: 49664244735039333844253464868252815627300673180592504866
 END RequestId: 4e8c16d3-8fda-431f-bdc9-119be66c8582
@@ -395,7 +395,7 @@ To do this I made tome key changes:
 1. Created a [samconfig.toml](./samconfig.toml.template) that pointed to my new parent CloudFormation template for 
    validate/build/deploy commands
 2. Took the Secret, Table, Stream, S3 bucket resources and added them to the parent CFN template [uktv-event-streaming-app.yaml](./resources/uktv-event-streaming-app.yaml]
-3. Created `AWS::Serverless::Application` resource in teh parent that point to [periodic-ingestion.yaml](./resources/periodic-ingestion.yaml) 
+3. Created `AWS::Serverless::Application` resource in teh parent that point to [periodic-ingestion.yaml](resources/userprefs-title-ingestion.yaml) 
 and [periodic-reference.yaml](./resources/periodic-reference.yaml].
 
 With some tweaks the whole application is build on one SAM app but it is broken down into appropriate files to manage
@@ -518,9 +518,79 @@ and added `env/local-secrets.json` to `.gitignore`
 
 We now have user preferences for source and genre saved and we must retrieve the shows these provide. 
 
-Reviewing the Watchmode docs 
+Reviewing the [Watchmode List Titles API](https://api.watchmode.com/docs#list-titles) seems a good fit to get started so 
+lets try to look for Sports(id=29) on Netflix(source_id=203):
 
-## Step 8 - schedule the API calls to get the shows and make it efficient
+```bash
+curl "https://api.watchmode.com/v1/list-titles/?apiKey=${WATCHMODE_API_KEY}&regions=GB&source_ids=203&genres=29&release_date_start20200101" | jq
+```
+
+Which gave me what I was looking for - saved in [sample-list-titles-response.json](./resources/sample-list-titles-response.json)
+for reference.
+
+So now I have a list of user preferences that give me a list of genres on a set of sources - for now lets have the user prefs
+drive the logic in periodic ingestion but to make this easier it would also be good to have a kinesis consumer lambda that
+reads the events and saves to lambda
+
+## Step 9 - read title data published to kinesis
+
+We will create a new function `TitleRecommendationsConsumerFunction` that expects an event like this and will for now
+just log it to the console. This function will live in its own nested stack defined in `resources/title-recommendations-consumer.yaml`
+and its code in `src/title_recommendations_consumer/`.
+
+The form of the events should be like this:
+
+```json
+{
+  "header": {
+    "publishingComponent": "PeriodicUKTitlesForUserPrefsFunction",
+    "publishTimestamp": "2025-07-04T16:02:51.855Z",
+    "publishCause": "userpref:<userId>"
+  },
+  "payload": {
+    "id": 3184039,
+    "title": "MaveriX",
+    "year": 2022,
+    "imdb_id": "tt15373864",
+    "tmdb_id": 196556,
+    "tmdb_type": "tv",
+    "type": "tv_series"
+  }
+}
+```
+
+With a basic implementation in place we can now test locally:
+
+```bash
+$ # Invoke the new consumer function with the Kinesis event
+sam local invoke TitleRecommendationsConsumerFunction \
+  --event events/title_recommendation_kinesis_event.json
+
+...
+
+[INFO]  2025-07-04T16:39:00.328Z        34e61ee5-4081-48fa-9bd0-b2c0a1590397    Received 2 records from Kinesis.
+[INFO]  2025-07-04T16:39:00.328Z        34e61ee5-4081-48fa-9bd0-b2c0a1590397    Successfully processed title event: {"header": {"publishingComponent": "PeriodicUKTitlesForUserPrefsFunction", "publishTimestamp": "2025-07-04T16:02:51.855Z", "publishCause": "scheduled_user_prefs_ingestion"}, "payload": {"id": 3184039, "title": "MaveriX", "year": 2022, "imdb_id": "tt15373864", "tmdb_id": 196556, "tmdb_type": "tv", "type": "tv_series"}}
+[INFO]  2025-07-04T16:39:00.328Z        34e61ee5-4081-48fa-9bd0-b2c0a1590397    Successfully processed title event: {"header": {"publishingComponent": "PeriodicUKTitlesForUserPrefsFunction", "publishTimestamp": "2025-07-04T16:03:12.114Z", "publishCause": "scheduled_user_prefs_ingestion"}, "payload": {"id": 9876543, "title": "Another Ghostly Event", "type": "movie"}}
+END RequestId: 34e61ee5-4081-48fa-9bd0-b2c0a1590397
+REPORT RequestId: 34e61ee5-4081-48fa-9bd0-b2c0a1590397  Init Duration: 0.06 ms  Duration: 89.74 ms      Billed Duration: 90 ms  Memory Size: 128 MB     Max Memory Used: 128 MB 
+{"message": "Successfully processed 2 records."}
+```
+
+## Step 10 - publish title data to kinesis
+
+To make it clearer what the component doing this publishing is doing we will rename `PeriodicUKTVDataIngestionFunction`
+to `PeriodicUKTitlesForUserPrefsFunction` and files named `periodic-ingestion*` to `userprefs-title-ingestion*`. The logic
+for the newly named `PeriodicUKTitlesForUserPrefsFunction` will be:
+
+1. Scan the DynamoDB table for all items with a PK starting with `userpref:`.
+2. Aggregate all unique source and genre IDs from these preferences.
+3. Call the WatchMode `/v1/list-titles` API with the aggregated IDs.
+4. For each title returned, create a Kinesis record with the new data model.
+5. Publish all records to the Kinesis stream in a batch.
+
+
+
+## Step x - schedule the API calls to get the shows and make it efficient
 
 
 

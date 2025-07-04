@@ -1,0 +1,6 @@
+{
+  "UserPrefsTitleIngestionFunction": {
+    "KINESIS_STREAM_NAME": "ProgrammeDataStreamLocal",
+    "DYNAMODB_TABLE_NAME": "UKTVProgrammesLocal"
+  }
+}

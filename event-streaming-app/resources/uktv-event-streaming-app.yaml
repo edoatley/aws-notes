@@ -102,13 +102,16 @@ Resources:
         - Name: email_verified
           Value: "true"
 
-  # Nested application for the Periodic Ingestion Lambda
-    # In your PeriodicIngestionApp resource
-  PeriodicIngestionApp:
+  # Nested application for the User Preferences driven title ingestion
+  UserPrefsTitleIngestionApp:
     Type: AWS::Serverless::Application
     Properties:
-      Location: periodic-ingestion.yaml
+      Location: userprefs-title-ingestion.yaml
       Parameters:
+        ProgramDataTableName: !Ref ProgrammesTable
+        ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
+        WatchModeApiKeySecretArn: !Ref WatchModeApiKeySecret
+        WatchModeHostname: !Ref WatchModeHostname
         ProgrammeDataStreamName: !If [ShouldCreateDataStream, !Ref ProgrammeDataStream, ""]
         ProgrammeDataStreamArn: !If [ShouldCreateDataStream, !GetAtt ProgrammeDataStream.Arn, ""]
 
@@ -133,6 +136,14 @@ Resources:
         ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
         UserPoolArn: !GetAtt UserPreferencesUserPool.Arn # Pass the User Pool ARN to the nested app
 
+  # Nested application for the Kinesis Consumer Lambda
+  TitleRecommendationsConsumerApp:
+    Type: AWS::Serverless::Application
+    Condition: ShouldCreateDataStream # Only create if the stream exists
+    Properties:
+      Location: title-recommendations-consumer.yaml
+      Parameters:
+        ProgrammeDataStreamArn: !GetAtt ProgrammeDataStream.Arn
 
 Outputs:
   UserPoolId:
