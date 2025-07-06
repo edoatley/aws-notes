@@ -18,12 +18,39 @@ KINESIS_STREAM_NAME = os.environ.get('KINESIS_STREAM_NAME')
 WATCHMODE_HOSTNAME = os.environ.get('WATCHMODE_HOSTNAME')
 WATCHMODE_API_KEY_SECRET_ARN = os.environ.get('WATCHMODE_API_KEY_SECRET_ARN')
 USER_PREF_PREFIX = os.environ.get('USER_PREF_PREFIX', 'userpref:')
+AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL') # Check for LocalStack endpoint
 
 # --- Global Clients & Cache ---
-dynamodb = boto3.resource('dynamodb')
-kinesis_client = boto3.client('kinesis')
-table = dynamodb.Table(DYNAMODB_TABLE_NAME)
 _cached_api_key = None
+table = None
+kinesis_client = None
+secrets_manager_client = None
+
+
+# --- Centralized Initialization Block ---
+try:
+    # Configure boto3 for LocalStack if endpoint is provided
+    boto3_kwargs = {}
+    if AWS_ENDPOINT_URL:
+        logger.info(f"Using LocalStack endpoint: {AWS_ENDPOINT_URL}")
+        boto3_kwargs['endpoint_url'] = AWS_ENDPOINT_URL
+
+    if DYNAMODB_TABLE_NAME:
+        dynamodb = boto3.resource('dynamodb', **boto3_kwargs)
+        table = dynamodb.Table(DYNAMODB_TABLE_NAME)
+        logger.info(f"Initialized DynamoDB table client for {DYNAMODB_TABLE_NAME}")
+
+    if KINESIS_STREAM_NAME:
+        kinesis_client = boto3.client('kinesis', **boto3_kwargs)
+        logger.info(f"Initialized Kinesis client for stream {KINESIS_STREAM_NAME}")
+
+    if WATCHMODE_API_KEY_SECRET_ARN:
+        secrets_manager_client = boto3.client('secretsmanager', **boto3_kwargs)
+        logger.info("Initialized Secrets Manager client.")
+
+except Exception as e:
+    logger.error(f"Error during AWS client initialization: {e}", exc_info=True)
+    raise
 
 def get_api_key() -> str:
     """Fetches the WatchMode API key from Secrets Manager and caches it."""
@@ -33,9 +60,10 @@ def get_api_key() -> str:
 
     if not WATCHMODE_API_KEY_SECRET_ARN:
         raise ValueError("WATCHMODE_API_KEY_SECRET_ARN environment variable not set.")
+    if not secrets_manager_client:
+        raise RuntimeError("Secrets Manager client was not initialized. Check environment variables.")
 
     try:
-        secrets_manager_client = boto3.client('secretsmanager')
         secret_value_response = secrets_manager_client.get_secret_value(SecretId=WATCHMODE_API_KEY_SECRET_ARN)
         _cached_api_key = secret_value_response['SecretString']
         return _cached_api_key
@@ -118,14 +146,16 @@ def publish_titles_to_kinesis(titles: list):
             'PartitionKey': str(title.get('id', 'unknown'))
         })
 
-    try:
-        # Using put_records for batching is more efficient
-        if records:
-            kinesis_client.put_records(StreamName=KINESIS_STREAM_NAME, Records=records)
-            logger.info(f"Successfully published {len(records)} titles to Kinesis.")
-    except ClientError as e:
-        logger.error(f"Error publishing records to Kinesis: {e}")
-        raise
+        # --- SUGGESTED IMPROVEMENT: Process records in chunks of 500 ---
+        for i in range(0, len(records), 500):
+            chunk = records[i:i + 500]
+            try:
+                if chunk:
+                    kinesis_client.put_records(StreamName=KINESIS_STREAM_NAME, Records=chunk)
+                    logger.info(f"Successfully published a chunk of {len(chunk)} titles to Kinesis.")
+            except ClientError as e:
+                logger.error(f"Error publishing a chunk of records to Kinesis: {e}")
+                raise
 
 def lambda_handler(event, context):
     logger.info(f"Starting title ingestion based on all user preferences.")

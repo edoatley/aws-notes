@@ -11,6 +11,7 @@ logger.setLevel(os.environ.get("LOG_LEVEL", "INFO").upper())
 
 # Environment variables
 DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
+AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL') # Check for LocalStack endpoint
 
 # Constants
 USER_PREF_PREFIX = 'userpref:'
@@ -24,7 +25,14 @@ table = None
 try:
     if not DYNAMODB_TABLE_NAME:
         raise EnvironmentError("DYNAMODB_TABLE_NAME environment variable must be set.")
-    table = boto3.resource('dynamodb').Table(DYNAMODB_TABLE_NAME)
+    boto3_kwargs = {}
+    if AWS_ENDPOINT_URL:
+        logger.info(f"Using LocalStack endpoint for DynamoDB: {AWS_ENDPOINT_URL}")
+        boto3_kwargs['endpoint_url'] = AWS_ENDPOINT_URL
+
+    dynamodb_resource = boto3.resource('dynamodb', **boto3_kwargs)
+    table = dynamodb_resource.Table(DYNAMODB_TABLE_NAME)
+    logger.info(f"Successfully initialized DynamoDB table client for: {DYNAMODB_TABLE_NAME}")
 except (EnvironmentError, ClientError) as e:
     logger.error(f"Initialization error: {e}", exc_info=True)
     raise
@@ -94,11 +102,15 @@ def get_user_preferences(user_id: str):
         preferences = {"sources": [], "genres": []}
         for item in response.get('Items', []):
             sk = item.get('SK', '')
-            pref_id = sk.split(':', 1)[1]
-            if sk.startswith(SOURCE_PREFIX):
-                preferences["sources"].append(pref_id)
-            elif sk.startswith(GENRE_PREFIX):
-                preferences["genres"].append(pref_id)
+            try:
+                prefix, pref_id = sk.split(':', 1)
+                if prefix == 'source':
+                    preferences["sources"].append(pref_id)
+                elif prefix == 'genre':
+                    preferences["genres"].append(pref_id)
+            except ValueError:
+                logger.warning(f"Skipping malformed SK without a ':' prefix: {sk}")
+                continue
 
         return build_response(200, preferences)
     except ClientError as e:

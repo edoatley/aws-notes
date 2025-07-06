@@ -588,7 +588,28 @@ for the newly named `PeriodicUKTitlesForUserPrefsFunction` will be:
 4. For each title returned, create a Kinesis record with the new data model.
 5. Publish all records to the Kinesis stream in a batch.
 
+The tricky thing is to test this lambda we need the following remote services:
 
+1. AWS Secrets Manager (to get the API key).
+2. AWS DynamoDB (to scan for all user preferences).
+3. AWS Kinesis (to publish the titles)
+
+This makes it necessary to deploy the services which is cost I'd sooner avoid at this point so I will look at using 
+localstack to set up a local set of these services
+
+### LocalStack setup
+
+### LocalStack setup
+
+- The first step is to create a docker compose file to define the localstack services we will use in place of the real
+  AWS services. This is defined here [docker-compose.yaml](./docker-compose.yaml)
+- The second step is to create a script to initialize the local resources. This is defined in [local-test-setup.sh](./resources/local-test-setup.sh).
+
+The local development workflow is as follows:
+
+1.  **Start LocalStack:** In your project root, run `docker compose up`.
+2.  **Initialize Resources:** In a new terminal, run `./resources/local-test-setup.sh`. This only needs to be done once per LocalStack session.
+3.  **Run Local Tests:** Use `sam local invoke` with an environment variables file that points to the local services (e.g., `env/localstack.json`).
 
 ## Step x - schedule the API calls to get the shows and make it efficient
 

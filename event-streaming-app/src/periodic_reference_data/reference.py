@@ -22,6 +22,7 @@ WATCHMODE_HOSTNAME = os.environ.get('WATCHMODE_HOSTNAME')
 WATCHMODE_API_KEY_SECRET_ARN = os.environ.get('WATCHMODE_API_KEY_SECRET_ARN')
 # New: Allow direct API key for local testing
 WATCHMODE_API_KEY = os.environ.get('WATCHMODE_API_KEY')
+AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL') # Check for LocalStack endpoint
 
 # Global AWS clients and fetched API key
 dynamodb_resource = None
@@ -36,30 +37,25 @@ try:
     if not WATCHMODE_HOSTNAME: # Corrected from WATCHMODE_URL
         raise EnvironmentError("WATCHMODE_HOSTNAME environment variable not set.")
 
-    dynamodb_resource = boto3.resource('dynamodb')
+    boto3_kwargs = {}
+    if AWS_ENDPOINT_URL:
+        logger.info(f"Using LocalStack endpoint: {AWS_ENDPOINT_URL}")
+        boto3_kwargs['endpoint_url'] = AWS_ENDPOINT_URL
+
+    dynamodb_resource = boto3.resource('dynamodb', **boto3_kwargs)
     table = dynamodb_resource.Table(DYNAMODB_TABLE_NAME)
-    if not table:
-        raise EnvironmentError(f"DynamoDB table not found: {DYNAMODB_TABLE_NAME}")
-    else:
-        logger.info(f"Successfully initialized DynamoDB table: {DYNAMODB_TABLE_NAME}")
+    logger.info(f"Successfully initialized DynamoDB table: {DYNAMODB_TABLE_NAME}")
 
     if WATCHMODE_API_KEY_SECRET_ARN and not WATCHMODE_API_KEY:
-        secrets_manager_client = boto3.client('secretsmanager')
+        secrets_manager_client = boto3.client('secretsmanager', **boto3_kwargs)
         logger.info("Successfully initialized Secrets Manager client.")
     elif WATCHMODE_API_KEY:
         logger.info("Direct API key provided; Secrets Manager client not initialized.")
     else:
         # This case (no direct key, no secret ARN) will be caught by get_watchmode_api_key_secret
         logger.info("No direct API key and no Secrets Manager ARN; API key retrieval will fail if attempted.")
-
-except EnvironmentError as e:
-    logger.error(f"Configuration error: {e}", exc_info=True)
-    raise
-except ClientError as e:
-    logger.error(f"AWS Client Initialization error: {e}", exc_info=True)
-    raise
-except Exception as e: # Catch any other unexpected init errors
-    logger.error(f"Unexpected error during initialization: {e}", exc_info=True)
+except (EnvironmentError, ClientError) as e:
+    logger.error(f"Initialization error: {e}", exc_info=True)
     raise
 
 
