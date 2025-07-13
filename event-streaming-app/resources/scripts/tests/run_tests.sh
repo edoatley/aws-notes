@@ -10,15 +10,15 @@ set -u
 
 # Get the script directory and the directory from which to invoke the sam calls
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-SAM_DIR=$(dirname $SCRIPT_DIR) # assumes SAM DIR is PARENT
-ENV_DIR="${SAM_DIR}/env"
-EVENT_DIR="${SAM_DIR}/events"
+PROJECT_ROOT=$(cd "${SCRIPT_DIR}/../../.." && pwd)
+ENV_DIR="${PROJECT_ROOT}/env"
+EVENT_DIR="${PROJECT_ROOT}/events"
 PROFILE_NAME="streaming"
 DEBUG=false
 
 # --- Source Helper Functions ---
-# shellcheck source=resources/test-helpers.sh
-source "${SCRIPT_DIR}/test-helpers.sh"
+# shellcheck source=resources/test_helpers.sh
+source "${SCRIPT_DIR}/test_helpers.sh"
 
 # --- Argument Parsing for Debug Flag ---
 if [[ "${1:-}" == "-d" || "${1:-}" == "--debug" ]]; then
@@ -47,8 +47,10 @@ else
 fi
 
 # --- Main Execution ---
-print_info "Moving to SAM project directory: ${SAM_DIR}"
-cd "${SAM_DIR}" || exit
+print_info "Moving to SAM project root directory: ${PROJECT_ROOT}"
+cd "${PROJECT_ROOT}" || exit
+
+#sam build
 
 # Run tests for each function
 # Format: "FunctionName EventFile EnvFile"

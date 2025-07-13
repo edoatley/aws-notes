@@ -29,7 +29,7 @@
 
 ## Step 1 - Initial set up
 
-To get started I wanted to log in securely from my laptop and so set up IAM Identity Center as described in more detail [here](../identity/IAM-Identity-Center.MD)
+To get started I wanted to log in securely from my laptop and so set up IAM Identity Center as described in more detail [here](../../../identity/IAM-Identity-Center.MD)
 
 I then checked this works with:
 
@@ -58,7 +58,7 @@ aws cloudformation deploy \
 
 ## Step 3 - Periodic Ingestion Lambda (basic deployment)
 
-1. set up this [Periodic Ingestion CloudFormation template](resources/userprefs-title-ingestion.yaml) to deploy the resources
+1. set up this [Periodic Ingestion CloudFormation template](../cloudformation/userprefs-title-ingestion.yaml) to deploy the resources
    associated with our first function called **PeriodicUKTVDataIngestionFunction**
 
 2. Built the app using sam:
@@ -67,7 +67,7 @@ aws cloudformation deploy \
 sam build --template-file ./resources/userprefs-title-ingestion.yaml --profile streaming
 ```
 
-3. Run a local test with a [test event](events/userprefs_title_ingestion.json) and [environment config](env/userprefs_title_ingestion.json):
+3. Run a local test with a [test event](../../events/userprefs_title_ingestion.json) and [environment config](../../env/userprefs_title_ingestion.json):
 
 ```bash
 sam local invoke PeriodicDataIngestionFunction \
@@ -220,7 +220,7 @@ Could be a good source of test data and help understand the service better.
 Watchmode has various static data such as sources of TV programmes (`/v1/sources/`). 
 
 It seems like a good idea to create another lambda to save this data to dynamoDB to avoid extra calls. We will create this
-lambda [here](/src/periodic_reference_data) and create a CFN template [here](resources/periodic-reference.yaml)
+lambda [here](/src/periodic_reference_data) and create a CFN template [here](../cloudformation/periodic-reference.yaml)
 
 We can pass a region of **GB** to `/v1/sources/` to get sources applicable in the UK. A retrieved source looks like this:
 
@@ -392,10 +392,10 @@ sam deploy
 
 To do this I made tome key changes:
 
-1. Created a [samconfig.toml](./samconfig.toml.template) that pointed to my new parent CloudFormation template for 
+1. Created a [samconfig.toml](../cloudformation/samconfig.toml.template) that pointed to my new parent CloudFormation template for 
    validate/build/deploy commands
 2. Took the Secret, Table, Stream, S3 bucket resources and added them to the parent CFN template [uktv-event-streaming-app.yaml](./resources/uktv-event-streaming-app.yaml]
-3. Created `AWS::Serverless::Application` resource in teh parent that point to [periodic-ingestion.yaml](resources/userprefs-title-ingestion.yaml) 
+3. Created `AWS::Serverless::Application` resource in teh parent that point to [periodic-ingestion.yaml](../cloudformation/userprefs-title-ingestion.yaml) 
 and [periodic-reference.yaml](./resources/periodic-reference.yaml].
 
 With some tweaks the whole application is build on one SAM app but it is broken down into appropriate files to manage
@@ -406,7 +406,7 @@ which means when we add the next lambda it will be trivial.
 This is very similar to the previous two lambdas in many ways except this time we need to have API Gateway fronting the 
 lambda and ideally a pool of user personas we can use to test it out. 
 
-The API is going to be defined in the following [OpenAPI specification](./resources/user-preferences-api.yaml). 
+The API is going to be defined in the following [OpenAPI specification](../cloudformation/user-preferences-api.yaml). 
 As you can see the endpoints provided are:
 
 - `GET /preferences` - get the users preferences
@@ -414,13 +414,13 @@ As you can see the endpoints provided are:
 - `GET /sources` - list the available sources
 - `GET /genres` - list the available genres
 
-In the [main CFN template](./resources/uktv-event-streaming-app.yaml) we have added:
+In the [main CFN template](../cloudformation/uktv-event-streaming-app.yaml) we have added:
 
 - `AWS::Cognito::UserPool`
 - `AWS::Cognito::UserPoolClient`
 - `AWS::Cognito::UserPoolUser`
 
-and we have created a Lambda to handle the API requests in [user_preferences/preferences.py](./src/user_preferences/preferences.py)
+and we have created a Lambda to handle the API requests in [user_preferences/preferences.py](../../src/user_preferences/preferences.py)
 
 We can now deploy our stack with `sam deploy` which works with this output:
 
@@ -445,7 +445,7 @@ Value               eu-west-2_Re96F4z3a
 Successfully created/updated stack - uktv-event-streaming-app in eu-west-2
 ```
 
-Note: for now I have the OpenAPI spec inline in [CloudFormation](./resources/user-preferences.yaml) as hit issues with
+Note: for now I have the OpenAPI spec inline in [CloudFormation](../cloudformation/user-preferences.yaml) as hit issues with
 `AWS::Include`
 
 The next step is to create some test events to try it out:
@@ -525,7 +525,7 @@ lets try to look for Sports(id=29) on Netflix(source_id=203):
 curl "https://api.watchmode.com/v1/list-titles/?apiKey=${WATCHMODE_API_KEY}&regions=GB&source_ids=203&genres=29&release_date_start20200101" | jq
 ```
 
-Which gave me what I was looking for - saved in [sample-list-titles-response.json](./resources/sample-list-titles-response.json)
+Which gave me what I was looking for - saved in [sample-list-titles-response.json](sample-list-titles-response.json)
 for reference.
 
 So now I have a list of user preferences that give me a list of genres on a set of sources - for now lets have the user prefs
@@ -602,8 +602,8 @@ localstack to set up a local set of these services
 ### LocalStack setup
 
 - The first step is to create a docker compose file to define the localstack services we will use in place of the real
-  AWS services. This is defined here [docker-compose.yaml](./docker-compose.yaml)
-- The second step is to create a script to initialize the local resources. This is defined in [local-test-setup.sh](./resources/local-test-setup.sh).
+  AWS services. This is defined here [docker-compose.yaml](../../docker-compose.yaml)
+- The second step is to create a script to initialize the local resources. This is defined in [local-test-setup.sh](../scripts/tests/local_setup.sh).
 - The third step is to remove all direct WatchMode API keys from the lambdas as we can save them to the LocalStack secrets manager now. This also means
   we can remove the local-secrets.json as everything can be saved to source control as we have no secrets hardcoded
 - The final step is to create a script to run all the tests to make testing easier which I did in [resources/local-test-execute-all.sh](./resources/local-test-execute-all.sh]
