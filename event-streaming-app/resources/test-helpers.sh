@@ -2,6 +2,8 @@
 # Helper functions for the local test execution script.
 # This file is intended to be sourced, not executed directly.
 
+DOCKER_NETWORK="event-streaming-app_podman"
+
 # Helper functions to print colored text
 print_info() {
     printf "\n\033[1;34m%s\033[0m\n" "$1"
@@ -25,13 +27,15 @@ run_test() {
     local output_text
     local exit_code
 
-    print_info "===== Running Test: ${function_name} ====="
+    event_filename=$(basename "${event_file}")
+    print_info "===== Running Test: ${function_name} (${event_filename})  ====="
 
     # The '|| true' prevents 'set -e' from exiting the script immediately on failure,
     # allowing us to capture the exit code and handle the error gracefully.
     output_text=$(sam local invoke "${function_name}" \
       --event "${event_file}" \
-      --env-vars "${env_file}" 2>&1) || true
+      --env-vars "${env_file}" \
+      --docker-network "${DOCKER_NETWORK}" 2>&1) || true
     exit_code=$?
 
     # If in debug mode, print the full output immediately for context

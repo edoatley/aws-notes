@@ -3,25 +3,20 @@ services:
     container_name: localstack
     image: localstack/localstack:latest
     ports:
-      - "4510-4559:4510-4559" # For individual service ports (older style)
-      - "4566:4566" # Default LocalStack edge service port
-    environment:
-      # Enable the services your Lambda uses
-      - SERVICES=secretsmanager,dynamodb,kinesis
-      # Optional: Set a specific region for consistency
-      - DEFAULT_REGION=eu-west-2
-      # Optional: Enable in-memory DynamoDB for faster testing (data won't persist)
-      - DYNAMODB_IN_MEMORY=1
-      # Optional: Expose the LocalStack hostname for internal Docker network communication
-      - LOCALSTACK_HOSTNAME=localstack
-      # For SAM CLI to connect to LocalStack from outside the container
-      - AWS_ENDPOINT_URL=http://localstack:4566
-    volumes:
-      - "~/.localstack:/var/lib/localstack" # Persist LocalStack data (optional)
-      - "/var/run/docker.sock:/var/run/docker.sock" # Required for some LocalStack features (e.g., Lambda execution)
+      - "4566:4566"
     networks:
-      - app-network
+      - podman
+    security_opt:
+      - "label=disable"
+    environment:
+      - DEBUG=1
+      - SERVICES=secretsmanager,dynamodb,kinesis
+      - DYNAMODB_IN_MEMORY=1
+      - EDGE_PORT=4566
+    volumes:
+      - "~/.localstack:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
 
 networks:
-  app-network:
+  podman:
     driver: bridge

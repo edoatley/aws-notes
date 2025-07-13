@@ -1,6 +1,12 @@
 #!/bin/bash
 # Script to initialize resources in LocalStack for the event-streaming-app
 
+if [ -z "${WATCHMODE_API_KEY:-}" ]; then
+  echo -e "\033[1;31mError: WATCHMODE_API_KEY environment variable is not set.\033[0m" >&2
+  echo "Please export your key before running this script." >&2
+  exit 1
+fi
+
 # Configuration
 REGION="eu-west-2"
 ENDPOINT_URL="http://localhost:4566"
@@ -28,7 +34,7 @@ echo ""
 echo "--- Creating Kinesis stream: ${STREAM_NAME} ---"
 $AWS kinesis create-stream \
     --stream-name ${STREAM_NAME} \
-    --shard-count 1
+    --shard-count 1 | jq
 
 echo ""
 echo "--- Creating Secrets Manager secret: ${SECRET_NAME} ---"

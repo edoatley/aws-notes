@@ -41,7 +41,7 @@ Resources:
                 Resource: 'arn:aws:logs:*:*:*'
               - Effect: Allow
                 Action:
-                  - dynamodb:PutItem
+                  - dynamodb:BatchWriteItem
                 Resource: !Ref ProgramDataTableArn
               - Effect: Allow # Add permission to get the secret API KEY value
                 Action:
@@ -70,9 +70,9 @@ Resources:
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref ProgramDataTableName
-          WATCHMODE_API_KEY: "" # required to not break local testing
           WATCHMODE_API_KEY_SECRET_ARN: !Ref WatchModeApiKeySecretArn
           WATCHMODE_HOSTNAME: !Ref WatchModeHostname
+          AWS_ENDPOINT_URL: "" # for testing
 
 Outputs:
   PeriodicReferenceFunctionName:

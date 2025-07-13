@@ -604,16 +604,21 @@ localstack to set up a local set of these services
 - The first step is to create a docker compose file to define the localstack services we will use in place of the real
   AWS services. This is defined here [docker-compose.yaml](./docker-compose.yaml)
 - The second step is to create a script to initialize the local resources. This is defined in [local-test-setup.sh](./resources/local-test-setup.sh).
+- The third step is to remove all direct WatchMode API keys from the lambdas as we can save them to the LocalStack secrets manager now. This also means
+  we can remove the local-secrets.json as everything can be saved to source control as we have no secrets hardcoded
+- The final step is to create a script to run all the tests to make testing easier which I did in [resources/local-test-execute-all.sh](./resources/local-test-execute-all.sh]
 
 The local development workflow is as follows:
 
-1.  **Start LocalStack:** In your project root, run `docker compose up`.
-2.  **Initialize Resources:** In a new terminal, run `./resources/local-test-setup.sh`. This only needs to be done once per LocalStack session.
-3.  **Run Local Tests:** Use `sam local invoke` with an environment variables file that points to the local services (e.g., `env/localstack.json`).
+1. **Start LocalStack:** In your project root, run `docker compose up`.
+2. **Initialize Resources:** In a new terminal, run `./resources/local-test-setup.sh`. This only needs to be done once per LocalStack session.
+3. **Run Local Tests:** - use [resources/local-test-execute-all.sh](./resources/local-test-execute-all.sh] to run all
+  the tests.
+
+Note: The test script sets the `AWS_ENDPOINT_URL` to `http://host.docker.internal:4566`. This special DNS name allows the
+Lambda container created by `sam local invoke` to connect to the LocalStack container running on the host machine.
 
 ## Step x - schedule the API calls to get the shows and make it efficient
-
-
 
 ## Cleanup
 

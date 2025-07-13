@@ -17,8 +17,8 @@ DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
 KINESIS_STREAM_NAME = os.environ.get('KINESIS_STREAM_NAME')
 WATCHMODE_HOSTNAME = os.environ.get('WATCHMODE_HOSTNAME')
 WATCHMODE_API_KEY_SECRET_ARN = os.environ.get('WATCHMODE_API_KEY_SECRET_ARN')
-USER_PREF_PREFIX = os.environ.get('USER_PREF_PREFIX', 'userpref:')
 AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL') # Check for LocalStack endpoint
+USER_PREF_PREFIX = 'userpref:'
 
 # --- Global Clients & Cache ---
 _cached_api_key = None
@@ -146,16 +146,16 @@ def publish_titles_to_kinesis(titles: list):
             'PartitionKey': str(title.get('id', 'unknown'))
         })
 
-        # --- SUGGESTED IMPROVEMENT: Process records in chunks of 500 ---
-        for i in range(0, len(records), 500):
-            chunk = records[i:i + 500]
-            try:
-                if chunk:
-                    kinesis_client.put_records(StreamName=KINESIS_STREAM_NAME, Records=chunk)
-                    logger.info(f"Successfully published a chunk of {len(chunk)} titles to Kinesis.")
-            except ClientError as e:
-                logger.error(f"Error publishing a chunk of records to Kinesis: {e}")
-                raise
+    # Process records in chunks of 500 (the Kinesis limit)
+    for i in range(0, len(records), 500):
+        chunk = records[i:i + 500]
+        try:
+            if chunk:
+                kinesis_client.put_records(StreamName=KINESIS_STREAM_NAME, Records=chunk)
+                logger.info(f"Successfully published a chunk of {len(chunk)} titles to Kinesis.")
+        except ClientError as e:
+            logger.error(f"Error publishing a chunk of records to Kinesis: {e}")
+            raise
 
 def lambda_handler(event, context):
     logger.info(f"Starting title ingestion based on all user preferences.")

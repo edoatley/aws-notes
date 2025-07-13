@@ -80,9 +80,8 @@ Resources:
           KINESIS_STREAM_NAME: !Ref ProgrammeDataStreamName
           WATCHMODE_API_KEY_SECRET_ARN: !Ref WatchModeApiKeySecretArn
           WATCHMODE_HOSTNAME: !Ref WatchModeHostname
-          USER_PREF_PREFIX: "userpref:"
-          SOURCE_PREFIX: "source:"
-          GENRE_PREFIX: "genre:"
+          AWS_ENDPOINT_URL: "" # for testing
+
 
 Outputs:
   UserPrefsTitleIngestionFunctionName:

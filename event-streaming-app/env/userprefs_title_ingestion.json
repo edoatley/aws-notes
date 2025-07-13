@@ -1,6 +1,8 @@
 {
   "UserPrefsTitleIngestionFunction": {
     "KINESIS_STREAM_NAME": "ProgrammeDataStreamLocal",
-    "DYNAMODB_TABLE_NAME": "UKTVProgrammesLocal"
+    "DYNAMODB_TABLE_NAME": "UKTVProgrammesLocal",
+    "WATCHMODE_API_KEY_SECRET_ARN": "local/WatchModeApiKey",
+    "AWS_ENDPOINT_URL": "http://host.docker.internal:4566"
   }
 }

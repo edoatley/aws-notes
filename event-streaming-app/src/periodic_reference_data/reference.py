@@ -20,8 +20,6 @@ GENRE_PREFIX = 'genre:'
 DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
 WATCHMODE_HOSTNAME = os.environ.get('WATCHMODE_HOSTNAME')
 WATCHMODE_API_KEY_SECRET_ARN = os.environ.get('WATCHMODE_API_KEY_SECRET_ARN')
-# New: Allow direct API key for local testing
-WATCHMODE_API_KEY = os.environ.get('WATCHMODE_API_KEY')
 AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL') # Check for LocalStack endpoint
 
 # Global AWS clients and fetched API key
@@ -34,47 +32,39 @@ _cached_watchmode_api_key = None
 try:
     if not DYNAMODB_TABLE_NAME:
         raise EnvironmentError("DYNAMODB_TABLE_NAME environment variable not set.")
-    if not WATCHMODE_HOSTNAME: # Corrected from WATCHMODE_URL
+    if not WATCHMODE_HOSTNAME:
         raise EnvironmentError("WATCHMODE_HOSTNAME environment variable not set.")
+    if not WATCHMODE_API_KEY_SECRET_ARN:
+        raise EnvironmentError("WATCHMODE_API_KEY_SECRET_ARN environment variable not set.")
 
+    # Configure boto3 for LocalStack if endpoint is provided
+    is_local = os.environ.get("AWS_SAM_LOCAL")
     boto3_kwargs = {}
-    if AWS_ENDPOINT_URL:
+    if is_local and AWS_ENDPOINT_URL:
         logger.info(f"Using LocalStack endpoint: {AWS_ENDPOINT_URL}")
         boto3_kwargs['endpoint_url'] = AWS_ENDPOINT_URL
+    else:
+        logger.info(f"Using AWS Default endpoint because {AWS_ENDPOINT_URL=} {is_local=}")
 
+    # Configure AWS resources the lambda requires
     dynamodb_resource = boto3.resource('dynamodb', **boto3_kwargs)
     table = dynamodb_resource.Table(DYNAMODB_TABLE_NAME)
     logger.info(f"Successfully initialized DynamoDB table: {DYNAMODB_TABLE_NAME}")
-
-    if WATCHMODE_API_KEY_SECRET_ARN and not WATCHMODE_API_KEY:
-        secrets_manager_client = boto3.client('secretsmanager', **boto3_kwargs)
-        logger.info("Successfully initialized Secrets Manager client.")
-    elif WATCHMODE_API_KEY:
-        logger.info("Direct API key provided; Secrets Manager client not initialized.")
-    else:
-        # This case (no direct key, no secret ARN) will be caught by get_watchmode_api_key_secret
-        logger.info("No direct API key and no Secrets Manager ARN; API key retrieval will fail if attempted.")
+    secrets_manager_client = boto3.client('secretsmanager', **boto3_kwargs)
+    logger.info("Successfully initialized Secrets Manager client.")
 except (EnvironmentError, ClientError) as e:
     logger.error(f"Initialization error: {e}", exc_info=True)
     raise
 
 
 def get_watchmode_api_key_secret() -> str:
-    """Fetches the WatchMode API key, prioritizing direct env var, then Secrets Manager."""
+    """Fetches the WatchMode API key from Secrets Manager."""
     global _cached_watchmode_api_key
     if _cached_watchmode_api_key:
         return _cached_watchmode_api_key
 
-    if WATCHMODE_API_KEY:
-        logger.info("Using direct API key from WATCHMODE_API_KEY.")
-        _cached_watchmode_api_key = WATCHMODE_API_KEY
-        return _cached_watchmode_api_key
-
-    if not WATCHMODE_API_KEY_SECRET_ARN:
-        raise ValueError("WATCHMODE_API_KEY_SECRET_ARN not set and no direct key provided.")
-
     if not secrets_manager_client:
-        raise ValueError("Secrets Manager client could not be initialized.")
+        raise ValueError("Secrets Manager client was not initialized. Check WATCHMODE_API_KEY_SECRET_ARN.")
 
     try:
         logger.info(f"Fetching secret: {WATCHMODE_API_KEY_SECRET_ARN}")

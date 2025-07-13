@@ -11,7 +11,7 @@ logger.setLevel(os.environ.get("LOG_LEVEL", "INFO").upper())
 
 # Environment variables
 DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
-AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL') # Check for LocalStack endpoint
+AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL')
 
 # Constants
 USER_PREF_PREFIX = 'userpref:'
@@ -39,15 +39,10 @@ except (EnvironmentError, ClientError) as e:
 
 
 class DecimalEncoder(json.JSONEncoder):
-    """
-    Custom JSON Encoder to handle DynamoDB's Decimal type
-    """
+    """Custom JSON Encoder to handle DynamoDB's Decimal type."""
     def default(self, o):
         if isinstance(o, decimal.Decimal):
-            if o % 1 == 0:
-                return int(o)
-            else:
-                return float(o)
+            return int(o) if o % 1 == 0 else float(o)
         return super(DecimalEncoder, self).default(o)
 
 
@@ -79,28 +74,44 @@ def get_entities(pk_prefix: str):
             )
             items.extend(response.get('Items', []))
 
-        return build_response(200, items)
+        clean_items = [item.get('data', {}) for item in items]
+        return build_response(200, clean_items)
 
     except ClientError as e:
-        if e.response['Error']['Code'] == 'ResourceNotFoundException':
-            logger.error(f"Error: Table '{DYNAMODB_TABLE_NAME}' not found.")
-            return build_response(500, {"error": "Internal server configuration error."})
-        else:
-            logger.error(f"DynamoDB ClientError getting entities: {e}", exc_info=True)
-            return build_response(500, {"error": "Could not retrieve data."})
+        logger.error(f"DynamoDB ClientError getting entities: {e}", exc_info=True)
+        return build_response(500, {"error": "Could not retrieve data."})
     except Exception as e:
         logger.error(f"Unexpected error getting entities: {e}", exc_info=True)
         return build_response(500, {"error": "An unexpected error occurred."})
 
-def get_user_preferences(user_id: str):
-    """Gets all preferences for a given user."""
+
+def _get_user_preferences_items(user_id: str) -> list:
+    """
+    Internal helper to fetch raw preference items from DynamoDB for a user.
+    This function returns the list of items directly, for use by other functions.
+    """
     pk = f"{USER_PREF_PREFIX}{user_id}"
-    logger.info(f"Querying preferences for user PK: {pk}")
+    logger.info(f"Querying for raw preference items with PK: {pk}")
     try:
         response = table.query(KeyConditionExpression=boto3.dynamodb.conditions.Key('PK').eq(pk))
+        logger.info(f"Query response: {response}")
+        return response.get('Items', [])
+    except ClientError as e:
+        logger.error(f"DynamoDB error in _get_user_preferences_items for user {user_id}: {e}", exc_info=True)
+        raise # Re-raise the exception to be handled by the calling function
+
+
+def get_user_preferences(user_id: str):
+    """
+    Gets all preferences for a given user and formats them as an API response.
+    This is the public-facing function for the GET /preferences endpoint.
+    """
+    logger.info(f"Handling GET /preferences request for user: {user_id}")
+    try:
+        items = _get_user_preferences_items(user_id)
 
         preferences = {"sources": [], "genres": []}
-        for item in response.get('Items', []):
+        for item in items:
             sk = item.get('SK', '')
             try:
                 prefix, pref_id = sk.split(':', 1)
@@ -109,7 +120,7 @@ def get_user_preferences(user_id: str):
                 elif prefix == 'genre':
                     preferences["genres"].append(pref_id)
             except ValueError:
-                logger.warning(f"Skipping malformed SK without a ':' prefix: {sk}")
+                logger.warning(f"Skipping malformed SK in user preferences: {sk}")
                 continue
 
         return build_response(200, preferences)
@@ -117,31 +128,44 @@ def get_user_preferences(user_id: str):
         logger.error(f"DynamoDB error getting preferences for user {user_id}: {e}", exc_info=True)
         return build_response(500, {'error': 'Could not retrieve preferences'})
 
+
 def set_user_preferences(user_id: str, body: dict):
-    """Deletes all existing preferences and sets new ones for a user."""
-    pk = f'userpref:{user_id}'
-    new_source_ids = body.get('sources', [])
-    new_genre_ids = body.get('genres', [])
-
+    """
+    Calculates the delta between old and new preferences and updates DynamoDB.
+    """
     try:
-        existing_items_response = table.query(KeyConditionExpression=boto3.dynamodb.conditions.Key('PK').eq(pk))
+        # 1. Get existing preferences internal helper
+        existing_items = _get_user_preferences_items(user_id)
+        existing_prefs_sk_set = {item['SK'] for item in existing_items}
 
+        # 2. Prepare the new preferences from the request body.
+        new_sources = body.get('sources', [])
+        new_genres = body.get('genres', [])
+        new_prefs_sk_set = {f"source:{s}" for s in new_sources} | {f"genre:{g}" for g in new_genres}
+
+        # 3. Calculate the delta: what to add and what to delete.
+        items_to_add = new_prefs_sk_set - existing_prefs_sk_set
+        items_to_delete = existing_prefs_sk_set - new_prefs_sk_set
+
+        logger.info(f"Items to add: {items_to_add}")
+        logger.info(f"Items to delete: {items_to_delete}")
+
+        # If there's nothing to do, exit early.
+        if not items_to_add and not items_to_delete:
+            logger.info("No preference changes detected. Exiting.")
+            return build_response(204, {})
+
+        # 4. Use the batch_writer to efficiently apply only the changes.
         with table.batch_writer() as batch:
-            for item in existing_items_response.get('Items', []):
-                batch.delete_item(Key={'PK': item['PK'], 'SK': item['SK']})
-                logger.info(f"Queueing delete for user {user_id}, item {item['SK']}")
+            pk = f"{USER_PREF_PREFIX}{user_id}"
+            for sk in items_to_delete:
+                logger.info(f"Queueing delete for user {user_id}, item {sk}")
+                batch.delete_item(Key={'PK': pk, 'SK': sk})
 
-            for source_id in new_source_ids:
-                if isinstance(source_id, str):
-                    full_sk = f'{SOURCE_PREFIX}{source_id}'
-                    batch.put_item(Item={'PK': pk, 'SK': full_sk})
-                    logger.info(f"Queueing put for user {user_id}, source {full_sk}")
+            for sk in items_to_add:
+                logger.info(f"Queueing put for user {user_id}, item {sk}")
+                batch.put_item(Item={'PK': pk, 'SK': sk})
 
-            for genre_id in new_genre_ids:
-                if isinstance(genre_id, str):
-                    full_sk = f'{GENRE_PREFIX}{genre_id}'
-                    batch.put_item(Item={'PK': pk, 'SK': full_sk})
-                    logger.info(f"Queueing put for user {user_id}, genre {full_sk}")
     except ClientError as e:
         logger.error(f"DynamoDB error setting preferences for user {user_id}: {e}", exc_info=True)
         return build_response(500, {'error': 'Could not set preferences'})

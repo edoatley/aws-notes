@@ -149,11 +149,17 @@ Resources:
       MemorySize: 256
       Timeout: 30
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ProgramDataTableName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:Scan
+                - dynamodb:BatchWriteItem
+              Resource: !Ref ProgramDataTableArn
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref ProgramDataTableName
+          AWS_ENDPOINT_URL: "" # for testing
 
 Outputs:
   ApiEndpoint:
