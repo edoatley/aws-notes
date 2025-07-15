@@ -615,8 +615,7 @@ The local development workflow is as follows:
 3. **Run Local Tests:** - use [resources/local-test-execute-all.sh](./resources/local-test-execute-all.sh] to run all
   the tests.
 
-Note: The test script sets the `AWS_ENDPOINT_URL` to `http://host.docker.internal:4566`. This special DNS name allows the
-Lambda container created by `sam local invoke` to connect to the LocalStack container running on the host machine.
+Note: The test script sets the `AWS_ENDPOINT_URL` to `http://localstack:4566` to leverage the localstack AWS services.
 
 ## Step x - schedule the API calls to get the shows and make it efficient
 

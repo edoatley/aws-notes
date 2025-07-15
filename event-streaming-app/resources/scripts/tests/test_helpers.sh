@@ -35,7 +35,7 @@ run_test() {
     output_text=$(sam local invoke "${function_name}" \
       --event "${event_file}" \
       --env-vars "${env_file}" \
-      --docker-network "${DOCKER_NETWORK}" 2>&1) || true
+      --docker-network "${DOCKER_NETWORK}" < /dev/null 2>&1) || true
     exit_code=$?
 
     # If in debug mode, print the full output immediately for context

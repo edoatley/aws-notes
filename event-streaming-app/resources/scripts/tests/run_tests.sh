@@ -50,7 +50,9 @@ fi
 print_info "Moving to SAM project root directory: ${PROJECT_ROOT}"
 cd "${PROJECT_ROOT}" || exit
 
-#sam build
+# Run a build before testing to ensure all artifacts are up-to-date
+print_info "Running 'sam build' to prepare artifacts..."
+sam build
 
 # Run tests for each function
 # Format: "FunctionName EventFile EnvFile"
@@ -58,19 +60,30 @@ declare -a tests=(
   "PeriodicReferenceFunction periodic_reference.json periodic_reference.json"
   "UserPreferencesFunction user_prefs_get_sources.json user_preferences.json"
   "UserPreferencesFunction user_prefs_get_genres.json user_preferences.json"
-  "UserPreferencesFunction user_prefs_get_preferences.json user_preferences.json"
   "UserPreferencesFunction user_prefs_put_preferences.json user_preferences.json"
   "UserPreferencesFunction user_prefs_get_preferences.json user_preferences.json"
+  "UserPrefsTitleIngestionFunction" # This will trigger the specialist script
+  "TitleRecommendationsConsumerFunction title_recommendation_kinesis_event.json"
 )
 
 # --- Loop through the defined tests and run them ---
 for test_case in "${tests[@]}"; do
   # Split the test case string into an array of parameters
   read -r -a test_params <<< "$test_case"
+  function_name="${test_params[0]}"
 
-  run_test "${test_params[0]}" \
-    "${EVENT_DIR}/${test_params[1]}" \
-    "${ENV_DIR}/${test_params[2]}"
+  # --- SPECIAL CASE for the ingestion function ---
+  if [[ "$function_name" == "UserPrefsTitleIngestionFunction" ]]; then
+      print_info "--> Matched specialist test. Running test_ingestion_flow.sh..." # <-- ADD THIS
+      "${SCRIPT_DIR}/test_ingestion_flow.sh"
+  else
+      event_file="${EVENT_DIR}/${test_params[1]}"
+      env_file=""
+      if [[ -n "${test_params[2]:-}" ]]; then
+          env_file="${ENV_DIR}/${test_params[2]}"
+      fi
+      run_test "$function_name" "$event_file" "$env_file"
+  fi
 done
 
 print_info "================================="
