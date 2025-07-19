@@ -1,10 +1,9 @@
-# src/userprefs_title_ingestion/ingestion.py
-
 import json
 import os
 import boto3
 import requests
 from botocore.exceptions import ClientError
+from boto3.dynamodb.conditions import Key
 import logging
 from datetime import datetime, timezone
 
@@ -29,21 +28,25 @@ secrets_manager_client = None
 
 # --- Centralized Initialization Block ---
 try:
+
     # Configure boto3 for LocalStack if endpoint is provided
-    boto3_kwargs = {}
+    boto3_kwargs = {'endpoint_url': AWS_ENDPOINT_URL} if AWS_ENDPOINT_URL else {}
     if AWS_ENDPOINT_URL:
-        logger.info(f"Using LocalStack endpoint: {AWS_ENDPOINT_URL}")
-        boto3_kwargs['endpoint_url'] = AWS_ENDPOINT_URL
+        logger.info(f"Using LocalStack endpoint for DynamoDB: {AWS_ENDPOINT_URL}")
 
-    if DYNAMODB_TABLE_NAME:
-        dynamodb = boto3.resource('dynamodb', **boto3_kwargs)
-        table = dynamodb.Table(DYNAMODB_TABLE_NAME)
-        logger.info(f"Initialized DynamoDB table client for {DYNAMODB_TABLE_NAME}")
+    # Initialise DynamoDB
+    if not DYNAMODB_TABLE_NAME:
+        raise EnvironmentError("DYNAMODB_TABLE_NAME environment variable must be set.")
+    dynamodb_resource = boto3.resource('dynamodb', **boto3_kwargs)
+    table = dynamodb_resource.Table(DYNAMODB_TABLE_NAME)
+    logger.info(f"Successfully initialized DynamoDB table client for: {DYNAMODB_TABLE_NAME}")
 
+    # Initialise Kinesis
     if KINESIS_STREAM_NAME:
         kinesis_client = boto3.client('kinesis', **boto3_kwargs)
         logger.info(f"Initialized Kinesis client for stream {KINESIS_STREAM_NAME}")
 
+    # Initialise Secrets Manager
     if WATCHMODE_API_KEY_SECRET_ARN:
         secrets_manager_client = boto3.client('secretsmanager', **boto3_kwargs)
         logger.info("Initialized Secrets Manager client.")
@@ -71,36 +74,49 @@ def get_api_key() -> str:
         logger.error(f"Error fetching API key from Secrets Manager: {e}")
         raise
 
+
 def get_all_user_preferences() -> dict:
     """Scans DynamoDB to get all unique source and genre preferences across all users."""
     all_sources = set()
     all_genres = set()
     try:
-        # Using a paginator is more robust for scanning large tables
-        paginator = table.meta.client.get_paginator('scan')
-        pages = paginator.paginate(
-            FilterExpression="begins_with(PK, :pk_prefix)",
-            ExpressionAttributeValues={":pk_prefix": {"S": USER_PREF_PREFIX}}
+        # Use the high-level resource's scan method.
+        # It handles pagination automatically when you check for 'LastEvaluatedKey'.
+        response = table.scan(
+            FilterExpression=Key('PK').begins_with(USER_PREF_PREFIX)
         )
-        for page in pages:
-            for item in page.get('Items', []):
-                sk = item.get('SK', {}).get('S', '')
-                if not sk:
-                    continue
-                try:
-                    prefix, pref_id = sk.split(':', 1)
-                    if prefix == 'source':
-                        all_sources.add(pref_id)
-                    elif prefix == 'genre':
-                        all_genres.add(pref_id)
-                except ValueError:
-                    logger.warning(f"Skipping malformed SK: {sk}")
+        items = response.get('Items', [])
+
+        # Manually handle pagination for subsequent pages if the table is large
+        while 'LastEvaluatedKey' in response:
+            response = table.scan(
+                FilterExpression=Key('PK').begins_with(USER_PREF_PREFIX),
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            items.extend(response.get('Items', []))
+
+        for item in items:
+            # With the resource API, 'item' is a standard Python dict.
+            # No need to unwrap data types like .get('S').
+            sk = item.get('SK', '')
+            if not sk:
+                continue
+            try:
+                prefix, pref_id = sk.split(':', 1)
+                if prefix == 'source':
+                    all_sources.add(pref_id)
+                elif prefix == 'genre':
+                    all_genres.add(pref_id)
+            except ValueError:
+                logger.warning(f"Skipping malformed SK: {sk}")
 
         logger.info(f"Found {len(all_sources)} unique sources and {len(all_genres)} unique genres.")
-        return {"sources": list(all_sources), "genres": list(all_genres)}
+        # Sorting the lists makes the output deterministic and easier to test
+        return {"sources": sorted(list(all_sources)), "genres": sorted(list(all_genres))}
     except ClientError as e:
         logger.error(f"Error scanning for user preferences: {e}")
         raise
+
 
 def fetch_titles(api_key: str, sources: list, genres: list) -> list:
     """Fetches titles from WatchMode based on aggregated preferences."""

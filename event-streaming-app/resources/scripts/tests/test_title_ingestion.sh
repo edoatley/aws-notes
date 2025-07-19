@@ -46,8 +46,7 @@ setup_preferences() {
         aws --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" \
             dynamodb put-item \
             --table-name "${TABLE_NAME}" \
-            --item "{\"PK\": {\"S\": \"userpref:${TEST_USER_ID}\"}, \"SK\": {\"S\": \"${pref_sk}\"}}" \
-            >/dev/null
+            --item "{\"PK\": {\"S\": \"userpref:${TEST_USER_ID}\"}, \"SK\": {\"S\": \"${pref_sk}\"}}"
     done
     print_success "✅ Setup complete."
 }
@@ -59,8 +58,7 @@ teardown_preferences() {
         aws --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" \
             dynamodb delete-item \
             --table-name "${TABLE_NAME}" \
-            --key "{\"PK\": {\"S\": \"userpref:${TEST_USER_ID}\"}, \"SK\": {\"S\": \"${pref_sk}\"}}" \
-            >/dev/null
+            --key "{\"PK\": {\"S\": \"userpref:${TEST_USER_ID}\"}, \"SK\": {\"S\": \"${pref_sk}\"}}"
     done
     print_success "✅ Teardown complete."
 }
@@ -74,7 +72,8 @@ invoke_ingestion_lambda() {
       --event "events/userprefs_title_ingestion.json" \
       --env-vars "env/userprefs_title_ingestion.json" \
       --docker-network "${DOCKER_NETWORK}" \
-      --dns "8.8.8.8" < /dev/null # ADDED --dns flag for internet access from container
+      < /dev/null
+#      --dns "8.8.8.8" < /dev/null # Add DNS for external API calls from the container
     print_success "✅ Lambda invoked."
 }
 
@@ -147,9 +146,12 @@ verify_kinesis_output() {
 # Use a trap to ensure teardown runs even if the script fails
 trap teardown_preferences EXIT
 
-print_info "===== Running Integration Test for UserPrefsTitleIngestionFunction ====="
+print_info "===== START: Integration Test for UserPrefsTitleIngestionFunction ====="
+print_info "--> STEP 1: Setting up test data..."
 setup_preferences
+print_info "--> STEP 2: Invoking the Lambda function..."
 invoke_ingestion_lambda
+print_info "--> STEP 3: Verifying the Kinesis output..."
 verify_kinesis_output
 print_success "===== ✅ Integration Test Passed! ====="
 echo "END"

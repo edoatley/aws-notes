@@ -74,8 +74,8 @@ for test_case in "${tests[@]}"; do
 
   # --- SPECIAL CASE for the ingestion function ---
   if [[ "$function_name" == "UserPrefsTitleIngestionFunction" ]]; then
-      print_info "--> Matched specialist test. Running test_ingestion_flow.sh..." # <-- ADD THIS
-      "${SCRIPT_DIR}/test_ingestion_flow.sh"
+      print_info "--> Matched specialist test. Running test_title_ingestion.sh..."
+      bash "${SCRIPT_DIR}/test_title_ingestion.sh"
   else
       event_file="${EVENT_DIR}/${test_params[1]}"
       env_file=""

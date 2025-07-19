@@ -27,6 +27,54 @@
 - [ ] Real-time updates: DynamoDB Streams will capture any changes to the program data (e.g., a schedule update). A final Lambda function will be triggered by these streams to, for example, send notifications for favorited shows.
 - [ ] Provide a simple user interface: While the backend is the focus, a simple frontend (e.g., a static website hosted on S3) can be created to query the DynamoDB table via an API Gateway endpoint and display the TV guide.
 
+## Target Architecture diagram
+
+```mermaid
+graph TD
+    subgraph "User Interaction"
+        direction LR
+        User(fa:fa-user User) --> APIGW[/"API Gateway"/]
+        APIGW -- Authorizes with --> Cognito[/"Cognito User Pool"/]
+        APIGW -- Invokes --> UserPrefsLambda[fa:fa-lambda UserPreferencesFunction]
+    end
+
+    subgraph "Periodic Ingestion"
+        direction TB
+        EventBridge(fa:fa-clock EventBridge Rule)
+        EventBridge -- Triggers --> RefDataLambda[fa:fa-lambda PeriodicReferenceFunction]
+        EventBridge -- Triggers --> TitleIngestionLambda[fa:fa-lambda UserPrefsTitleIngestionFunction]
+    end
+
+    subgraph "Real-time Processing"
+        direction TB
+        KinesisStream(fa:fa-stream Kinesis Data Stream) --> TitleConsumerLambda[fa:fa-lambda TitleRecommendationsConsumerFunction]
+    end
+
+    subgraph "Shared AWS Services"
+        direction TB
+        DynamoDB(fa:fa-database DynamoDB Table)
+        SecretsManager(fa:fa-key Secrets Manager)
+    end
+
+    subgraph "External Services"
+        WatchModeAPI[/"api.watchmode.com"/]
+    end
+
+    %% --- Data & Event Flows ---
+    UserPrefsLambda -- Reads/Writes --> DynamoDB
+
+    RefDataLambda -- Gets API Key --> SecretsManager
+    RefDataLambda -- Fetches Sources/Genres --> WatchModeAPI
+    RefDataLambda -- Writes --> DynamoDB
+
+    TitleIngestionLambda -- Gets API Key --> SecretsManager
+    TitleIngestionLambda -- Reads All User Prefs --> DynamoDB
+    TitleIngestionLambda -- Fetches Titles --> WatchModeAPI
+    TitleIngestionLambda -- Publishes Events --> KinesisStream
+
+    TitleConsumerLambda -- Writes Processed Titles --> DynamoDB
+```
+
 ## Step 1 - Initial set up
 
 To get started I wanted to log in securely from my laptop and so set up IAM Identity Center as described in more detail [here](../../../identity/IAM-Identity-Center.MD)
@@ -616,6 +664,17 @@ The local development workflow is as follows:
   the tests.
 
 Note: The test script sets the `AWS_ENDPOINT_URL` to `http://localstack:4566` to leverage the localstack AWS services.
+
+### Specialist Test Script for Title Ingestion
+
+To test the title ingestion we need a specialist script I created as [test_title_ingestion.sh](../scripts/tests/test_title_ingestion.sh).
+This script performs a full integration test of the `UserPrefsTitleIngestionFunction` by:
+
+- **Setting up** test data by creating a dummy user with specific source and genre preferences in the local DynamoDB instance.
+- **Executing** the Lambda function using `sam local invoke`, which triggers it to read the preferences and fetch titles from the WatchMode API.
+- **Verifying** the outcome by polling the local Kinesis stream to ensure the correct title data was published.
+- **Tearing down** the test by automatically deleting the dummy user data from DynamoDB, ensuring a clean state for the next run.
+
 
 ## Step x - schedule the API calls to get the shows and make it efficient
 
