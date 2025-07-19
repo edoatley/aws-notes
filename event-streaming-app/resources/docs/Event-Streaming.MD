@@ -667,7 +667,7 @@ Note: The test script sets the `AWS_ENDPOINT_URL` to `http://localstack:4566` to
 
 ### Specialist Test Script for Title Ingestion
 
-To test the title ingestion we need a specialist script I created as [test_title_ingestion.sh](../scripts/tests/test_title_ingestion.sh).
+To test the title ingestion we need a specialist script I created as [test_title_ingestion.sh](../scripts/tests/test_e2e.sh).
 This script performs a full integration test of the `UserPrefsTitleIngestionFunction` by:
 
 - **Setting up** test data by creating a dummy user with specific source and genre preferences in the local DynamoDB instance.

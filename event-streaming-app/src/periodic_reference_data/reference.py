@@ -58,7 +58,7 @@ except (EnvironmentError, ClientError) as e:
 
 
 def get_watchmode_api_key_secret() -> str:
-    """Fetches the WatchMode API key from Secrets Manager."""
+    """Fetch the WatchMode API key from AWS Secrets Manager, caching it for reuse."""
     global _cached_watchmode_api_key
     if _cached_watchmode_api_key:
         return _cached_watchmode_api_key
@@ -79,7 +79,7 @@ def get_watchmode_api_key_secret() -> str:
 
 
 def _fetch_watchmode_data(api_key: str, endpoint: str, params: dict = None) -> list | None:
-    """Generic function to fetch data from a WatchMode API endpoint."""
+    """Make a generic GET request to a specified WatchMode API endpoint."""
     if not WATCHMODE_HOSTNAME:
         logger.error("WATCHMODE_HOSTNAME is not configured.")
         return None # Or raise
@@ -103,20 +103,17 @@ def _fetch_watchmode_data(api_key: str, endpoint: str, params: dict = None) -> l
 
 
 def get_sources(region: str, api_key: str) -> list | None:
-    """Fetches all streaming sources available for the region."""
+    """Fetch all streaming sources available from the WatchMode API for a given region."""
     return _fetch_watchmode_data(api_key, "sources", params={"regions": region})
 
 
 def get_genres(api_key: str) -> list | None:
-    """Fetches all genres available."""
+    """Fetch all available genres from the WatchMode API."""
     return _fetch_watchmode_data(api_key, "genres")
 
 
 def _save_items_to_dynamodb(items_list: list, item_type_prefix: str, item_type_name: str) -> bool:
-    """
-    Generic function to save a list of items (sources or genres) to DynamoDB.
-    Returns True if save operation was attempted for at least one item, False otherwise or if table is unavailable.
-    """
+    """Save a list of items (like sources or genres) to DynamoDB using a batch writer."""
     if not table:
         logger.error(f"DynamoDB table not available for saving {item_type_name}s.")
         return False
@@ -145,24 +142,21 @@ def _save_items_to_dynamodb(items_list: list, item_type_prefix: str, item_type_n
 
 
 def save_sources_to_dynamodb(sources_list: list):
-    """Saves the list of source objects to DynamoDB."""
+    """Save a list of source objects to DynamoDB."""
     return _save_items_to_dynamodb(sources_list, SOURCE_PREFIX, "source")
 
 
 def save_genres_to_dynamodb(genres_list: list):
-    """Saves the list of genre objects to DynamoDB."""
+    """Save a list of genre objects to DynamoDB."""
     return _save_items_to_dynamodb(genres_list, GENRE_PREFIX, "genre")
-
-# def debugEnvironment():
-#     logger.info(f'DYNAMODB_TABLE_NAME {DYNAMODB_TABLE_NAME}')
-#     logger.info(f'WATCHMODE_HOSTNAME {WATCHMODE_HOSTNAME}')
-#     logger.info(f'WATCHMODE_API_KEY_SECRET_ARN {WATCHMODE_API_KEY_SECRET_ARN}')
-#     logger.info(f'WATCHMODE_API_KEY {WATCHMODE_API_KEY}')
 
 
 def lambda_handler(event, context):
+    """Refresh reference data like sources and genres from an external API.
+    This function is triggered by an event and fetches data from the WatchMode API,
+    then saves it into DynamoDB for application-wide use.
+    """
     logger.info(f"Received event: {json.dumps(event)}")
-    # debugEnvironment()
 
     if not table:
         logger.error(f"DynamoDB table not initialized")

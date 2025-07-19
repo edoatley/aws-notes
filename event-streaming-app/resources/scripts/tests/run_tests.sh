@@ -54,37 +54,26 @@ cd "${PROJECT_ROOT}" || exit
 print_info "Running 'sam build' to prepare artifacts..."
 sam build
 
-# Run tests for each function
-# Format: "FunctionName EventFile EnvFile"
+# Run specialist tests for each function (Format: "FunctionName EventFile EnvFile")
 declare -a tests=(
   "PeriodicReferenceFunction periodic_reference.json periodic_reference.json"
   "UserPreferencesFunction user_prefs_get_sources.json user_preferences.json"
   "UserPreferencesFunction user_prefs_get_genres.json user_preferences.json"
   "UserPreferencesFunction user_prefs_put_preferences.json user_preferences.json"
   "UserPreferencesFunction user_prefs_get_preferences.json user_preferences.json"
-  "UserPrefsTitleIngestionFunction" # This will trigger the specialist script
-  "TitleRecommendationsConsumerFunction title_recommendation_kinesis_event.json"
 )
 
-# --- Loop through the defined tests and run them ---
+print_info "Running local tests..."
 for test_case in "${tests[@]}"; do
-  # Split the test case string into an array of parameters
   read -r -a test_params <<< "$test_case"
   function_name="${test_params[0]}"
-
-  # --- SPECIAL CASE for the ingestion function ---
-  if [[ "$function_name" == "UserPrefsTitleIngestionFunction" ]]; then
-      print_info "--> Matched specialist test. Running test_title_ingestion.sh..."
-      bash "${SCRIPT_DIR}/test_title_ingestion.sh"
-  else
-      event_file="${EVENT_DIR}/${test_params[1]}"
-      env_file=""
-      if [[ -n "${test_params[2]:-}" ]]; then
-          env_file="${ENV_DIR}/${test_params[2]}"
-      fi
-      run_test "$function_name" "$event_file" "$env_file"
-  fi
+  event_file="${EVENT_DIR}/${test_params[1]}"
+  env_file="${ENV_DIR}/${test_params[2]}"
+  run_test "$function_name" "$event_file" "$env_file"
 done
+
+print_info "Running local integration test..."
+bash "${SCRIPT_DIR}/test_e2e.sh"
 
 print_info "================================="
 print_success "All local tests passed successfully!"

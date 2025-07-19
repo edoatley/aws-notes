@@ -13,7 +13,6 @@ template_file = "resources/uktv-event-streaming-app.yaml"
 
 # sam local-invoke command
 [default.local_invoke.parameters]
-env_vars="env/local-secrets.json"
 profile = "<PROFILE NAME>"
 region = "eu-west-2"
 

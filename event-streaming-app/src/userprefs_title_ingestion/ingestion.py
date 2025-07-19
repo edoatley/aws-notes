@@ -56,7 +56,7 @@ except Exception as e:
     raise
 
 def get_api_key() -> str:
-    """Fetches the WatchMode API key from Secrets Manager and caches it."""
+    """Fetch the WatchMode API key from AWS Secrets Manager, caching it for reuse."""
     global _cached_api_key
     if _cached_api_key:
         return _cached_api_key
@@ -76,7 +76,7 @@ def get_api_key() -> str:
 
 
 def get_all_user_preferences() -> dict:
-    """Scans DynamoDB to get all unique source and genre preferences across all users."""
+    """Scan DynamoDB to aggregate all unique source and genre preferences across all users."""
     all_sources = set()
     all_genres = set()
     try:
@@ -119,7 +119,7 @@ def get_all_user_preferences() -> dict:
 
 
 def fetch_titles(api_key: str, sources: list, genres: list) -> list:
-    """Fetches titles from WatchMode based on aggregated preferences."""
+    """Fetch titles from the WatchMode API based on aggregated source and genre preferences."""
     if not sources or not genres:
         logger.info("No sources or genres to fetch titles for.")
         return []
@@ -142,7 +142,7 @@ def fetch_titles(api_key: str, sources: list, genres: list) -> list:
         return [] # Return empty list on error to not fail the whole process
 
 def publish_titles_to_kinesis(titles: list):
-    """Publishes a list of titles to the Kinesis stream."""
+    """Publish a list of title records to the Kinesis stream in batches."""
     if not titles:
         logger.info("No titles to publish.")
         return
@@ -174,6 +174,10 @@ def publish_titles_to_kinesis(titles: list):
             raise
 
 def lambda_handler(event, context):
+    """Orchestrate the title ingestion process based on all user preferences.
+     This function scans for all user preferences, fetches matching titles from an
+     external API, and publishes the results to a Kinesis stream.
+     """
     logger.info(f"Starting title ingestion based on all user preferences.")
 
     try:

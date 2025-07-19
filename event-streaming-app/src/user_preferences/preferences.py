@@ -40,6 +40,7 @@ except (EnvironmentError, ClientError) as e:
 
 class DecimalEncoder(json.JSONEncoder):
     """Custom JSON Encoder to handle DynamoDB's Decimal type."""
+
     def default(self, o):
         if isinstance(o, decimal.Decimal):
             return int(o) if o % 1 == 0 else float(o)
@@ -47,7 +48,7 @@ class DecimalEncoder(json.JSONEncoder):
 
 
 def build_response(status_code, body):
-    """Helper to build API Gateway proxy response."""
+    """Build a standard API Gateway proxy response object."""
     return {
         "statusCode": status_code,
         "headers": {
@@ -57,8 +58,9 @@ def build_response(status_code, body):
         "body": json.dumps(body, cls=DecimalEncoder)
     }
 
+
 def get_entities(pk_prefix: str):
-    """Scans DynamoDB for entities with a given PK prefix (e.g., 'source:')."""
+    """Scan DynamoDB for all entities with a given PK prefix, such as 'source:'."""
     try:
         response = table.scan(
             FilterExpression="begins_with(PK, :pk_prefix)",
@@ -86,10 +88,7 @@ def get_entities(pk_prefix: str):
 
 
 def _get_user_preferences_items(user_id: str) -> list:
-    """
-    Internal helper to fetch raw preference items from DynamoDB for a user.
-    This function returns the list of items directly, for use by other functions.
-    """
+    """Fetch all raw preference items for a specific user ID from DynamoDB."""
     pk = f"{USER_PREF_PREFIX}{user_id}"
     logger.info(f"Querying for raw preference items with PK: {pk}")
     try:
@@ -98,14 +97,11 @@ def _get_user_preferences_items(user_id: str) -> list:
         return response.get('Items', [])
     except ClientError as e:
         logger.error(f"DynamoDB error in _get_user_preferences_items for user {user_id}: {e}", exc_info=True)
-        raise # Re-raise the exception to be handled by the calling function
+        raise  # Re-raise the exception to be handled by the calling function
 
 
 def get_user_preferences(user_id: str):
-    """
-    Gets all preferences for a given user and formats them as an API response.
-    This is the public-facing function for the GET /preferences endpoint.
-    """
+    """Retrieve and format a user's preferences for sources and genres."""
     logger.info(f"Handling GET /preferences request for user: {user_id}")
     try:
         items = _get_user_preferences_items(user_id)
@@ -130,9 +126,7 @@ def get_user_preferences(user_id: str):
 
 
 def set_user_preferences(user_id: str, body: dict):
-    """
-    Calculates the delta between old and new preferences and updates DynamoDB.
-    """
+    """Calculate the delta between old and new preferences and update DynamoDB in a batch."""
     try:
         # 1. Get existing preferences internal helper
         existing_items = _get_user_preferences_items(user_id)
@@ -180,10 +174,12 @@ def set_user_preferences(user_id: str, body: dict):
         }
     }
 
+
 def lambda_handler(event, context):
-    """
-    Handles API Gateway requests for user preferences, sources, and genres.
-    """
+    """Handle API Gateway requests for user preferences, sources, and genres.
+     This function acts as a router, directing incoming requests to the appropriate
+     logic based on the HTTP method and path.
+     """
     logger.info(f"Received event: {json.dumps(event)}")
 
     http_method = event.get('httpMethod')
