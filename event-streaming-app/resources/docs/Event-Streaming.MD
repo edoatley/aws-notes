@@ -6,6 +6,7 @@
 * [Event Streaming app](#event-streaming-app)
   * [Table of contents](#table-of-contents)
   * [Rough plan](#rough-plan)
+  * [Target Architecture diagram](#target-architecture-diagram)
   * [Step 1 - Initial set up](#step-1---initial-set-up)
   * [Step 2 - Shared infrastructure set up](#step-2---shared-infrastructure-set-up)
   * [Step 3 - Periodic Ingestion Lambda (basic deployment)](#step-3---periodic-ingestion-lambda-basic-deployment)
@@ -14,6 +15,13 @@
     * [Genres](#genres)
   * [Step 5 - SAM Project cleanup](#step-5---sam-project-cleanup)
   * [Step 6 - Preferences API](#step-6---preferences-api)
+  * [Step 7 - Call API to get some shows for all known genres and source](#step-7---call-api-to-get-some-shows-for-all-known-genres-and-source)
+  * [Step 9 - read title data published to kinesis](#step-9---read-title-data-published-to-kinesis)
+  * [Step 10 - publish title data to kinesis](#step-10---publish-title-data-to-kinesis)
+    * [LocalStack setup](#localstack-setup)
+    * [LocalStack setup](#localstack-setup-1)
+    * [Specialist Test Script for Title Ingestion](#specialist-test-script-for-title-ingestion)
+  * [Step x - schedule the API calls to get the shows and make it efficient](#step-x---schedule-the-api-calls-to-get-the-shows-and-make-it-efficient)
   * [Cleanup](#cleanup)
 <!-- TOC -->
 
@@ -21,11 +29,14 @@
 
 - [x] Store TV reference data: A Lambda function will periodically fetch reference data and store in DynamoDB for use within the application
 - [x] A Simple RESTful API exposed via API Gateway and backed by a lambda that stores a users preferences.  
-- [ ] Ingest TV and streaming data: A Lambda function will periodically fetch the latest TV schedules and streaming availability for the UK from an external API.
+- [ ] Ingest TV and streaming data: A Lambda function will periodically fetch the latest TV schedules and streaming availability for the UK from an external API (limited to those categories users have preference for).
 - [ ] Process and enrich the data: The raw data will be sent to a Kinesis Data Stream for real-time processing. Another Lambda function will consume this data, clean it, and potentially enrich it with additional information (e.g., ratings from another source).
+- [ ] Create a shared services layer to remove lambda duplication
 - [ ] Store the program guide: The processed data will be stored in a DynamoDB table, optimized for efficient querying of shows, channels, and streaming services.
 - [ ] Real-time updates: DynamoDB Streams will capture any changes to the program data (e.g., a schedule update). A final Lambda function will be triggered by these streams to, for example, send notifications for favorited shows.
-- [ ] Provide a simple user interface: While the backend is the focus, a simple frontend (e.g., a static website hosted on S3) can be created to query the DynamoDB table via an API Gateway endpoint and display the TV guide.
+- [ ] Add Google IdP federation
+- [ ] Provide a single page web app user interface (a static website hosted on S3) and login with google credentials
+- [ ] Extend the web app to query API Gateway endpoints to display the TV offerings, update user preferences, etc.
 
 ## Target Architecture diagram
 
