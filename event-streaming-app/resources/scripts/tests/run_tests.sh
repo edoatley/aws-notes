@@ -55,13 +55,13 @@ print_info "Running 'sam build' to prepare artifacts..."
 sam build
 
 # Run specialist tests for each function (Format: "FunctionName EventFile EnvFile")
-declare -a tests=(
-  "PeriodicReferenceFunction periodic_reference.json periodic_reference.json"
-  "UserPreferencesFunction user_prefs_get_sources.json user_preferences.json"
-  "UserPreferencesFunction user_prefs_get_genres.json user_preferences.json"
-  "UserPreferencesFunction user_prefs_put_preferences.json user_preferences.json"
-  "UserPreferencesFunction user_prefs_get_preferences.json user_preferences.json"
-)
+ declare -a tests=(
+   "PeriodicReferenceApp/PeriodicReferenceFunction periodic_reference.json periodic_reference.json"
+   "UserPreferencesApp/UserPreferencesFunction user_prefs_get_sources.json user_preferences.json"
+   "UserPreferencesApp/UserPreferencesFunction user_prefs_get_genres.json user_preferences.json"
+   "UserPreferencesApp/UserPreferencesFunction user_prefs_put_preferences.json user_preferences.json"
+   "UserPreferencesApp/UserPreferencesFunction user_prefs_get_preferences.json user_preferences.json"
+ )
 
 print_info "Running local tests..."
 for test_case in "${tests[@]}"; do

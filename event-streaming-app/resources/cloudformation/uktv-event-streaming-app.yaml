@@ -30,10 +30,6 @@ Conditions:
   ShouldCreateDataStream: !Equals [ !Ref CreateDataStream, "true" ]
 
 Resources:
-  LambdaCodeBucket:
-    Type: AWS::S3::Bucket
-    # Let CFN name the bucket
-
   WatchModeApiKeySecret:
     Type: AWS::SecretsManager::Secret
     Properties:
@@ -144,6 +140,8 @@ Resources:
       Location: title-recommendations-consumer.yaml
       Parameters:
         ProgrammeDataStreamArn: !GetAtt ProgrammeDataStream.Arn
+        ProgramDataTableName: !Ref ProgrammesTable
+        ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
 
 Outputs:
   UserPoolId:

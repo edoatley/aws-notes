@@ -78,11 +78,11 @@ def get_watchmode_api_key_secret() -> str:
         raise
 
 
-def _fetch_watchmode_data(api_key: str, endpoint: str, params: dict = None) -> list | None:
+def _fetch_watchmode_data(api_key: str, endpoint: str, params: dict = None) -> list:
     """Make a generic GET request to a specified WatchMode API endpoint."""
     if not WATCHMODE_HOSTNAME:
         logger.error("WATCHMODE_HOSTNAME is not configured.")
-        return None # Or raise
+        return [] # Or raise
 
     url = f'{WATCHMODE_HOSTNAME}/v1/{endpoint}/'
     base_params = {"apiKey": api_key}
@@ -96,18 +96,18 @@ def _fetch_watchmode_data(api_key: str, endpoint: str, params: dict = None) -> l
         return response.json()
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching data from {url}: {e}", exc_info=True)
-        return None
+        return []
     except json.JSONDecodeError as e:
         logger.error(f"Error decoding JSON response from {url}: {e}", exc_info=True)
-        return None
+        return []
 
 
-def get_sources(region: str, api_key: str) -> list | None:
+def get_sources(region: str, api_key: str) -> list:
     """Fetch all streaming sources available from the WatchMode API for a given region."""
     return _fetch_watchmode_data(api_key, "sources", params={"regions": region})
 
 
-def get_genres(api_key: str) -> list | None:
+def get_genres(api_key: str) -> list:
     """Fetch all available genres from the WatchMode API."""
     return _fetch_watchmode_data(api_key, "genres")
 
@@ -151,6 +151,32 @@ def save_genres_to_dynamodb(genres_list: list):
     return _save_items_to_dynamodb(genres_list, GENRE_PREFIX, "genre")
 
 
+
+def _process_source_refresh(api_key: str, event: dict) -> tuple[str | None, bool]:
+    """Handles the logic for refreshing sources, returning a message and success status."""
+    if event.get('refresh_sources', 'N').upper() != 'Y':
+        return None, True  # No action requested, operation is successful.
+
+    region = event.get("regions", "GB")
+    logger.info(f"Attempting to refresh sources for region: {region}")
+    sources_data = get_sources(region, api_key)
+    if sources_data and save_sources_to_dynamodb(sources_data):
+        return f'Sources refreshed for region {region}', True
+    else:
+        return f'No sources found or error saving for region {region}', False
+
+def _process_genre_refresh(api_key: str, event: dict) -> tuple[str | None, bool]:
+    """Handles the logic for refreshing genres, returning a message and success status."""
+    if event.get('refresh_genres', 'N').upper() != 'Y':
+        return None, True
+
+    logger.info("Attempting to refresh genres")
+    genres_data = get_genres(api_key)
+    if genres_data and save_genres_to_dynamodb(genres_data):
+        return 'Genres refreshed', True
+    else:
+        return 'No genres found or error saving', False
+
 def lambda_handler(event, context):
     """Refresh reference data like sources and genres from an external API.
     This function is triggered by an event and fetches data from the WatchMode API,
@@ -158,11 +184,6 @@ def lambda_handler(event, context):
     """
     logger.info(f"Received event: {json.dumps(event)}")
 
-    if not table:
-        logger.error(f"DynamoDB table not initialized")
-        return {'statusCode': 500, 'body': json.dumps({'error': 'DynamoDB table could not be initialized'})}
-
-    api_key = None
     try:
         api_key = get_watchmode_api_key_secret()
     except Exception as e:
@@ -170,42 +191,25 @@ def lambda_handler(event, context):
         return {'statusCode': 500, 'body': json.dumps({'error': f'Failed to retrieve API key: {str(e)}'})}
 
     messages = []
+    all_successful = True
 
-    status_code = 200
+    try:
+        source_msg, source_success = _process_source_refresh(api_key, event)
+        if source_msg: messages.append(source_msg)
+        if not source_success: all_successful = False
 
-    # Handle source refresh
-    if event.get('refresh_sources', 'N').upper() == 'Y':
-        region = event.get("regions", "GB") # Default region
-        logger.info(f"Attempting to refresh sources for region: {region}")
-        try:
-            sources_data = get_sources(region, api_key)
-            if sources_data:
-                save_sources_to_dynamodb(sources_data)
-                messages.append(f'Sources refreshed for region {region}')
-            else:
-                messages.append(f'No sources found or error fetching for region {region}')
-        except Exception as e:
-            logger.error(f"Error during source refresh process: {e}")
-            messages.append(f'Error processing sources for region {region}: {str(e)}')
-            status_code = 500
+        genre_msg, genre_success = _process_genre_refresh(api_key, event)
+        if genre_msg: messages.append(genre_msg)
+        if not genre_success: all_successful = False
 
-    # Handle genre refresh
-    if event.get('refresh_genres', 'N').upper() == 'Y':
-        logger.info("Attempting to refresh genres")
-        try:
-            genres_data = get_genres(api_key)
-            if genres_data:
-                save_genres_to_dynamodb(genres_data)
-                messages.append('Genres refreshed')
-            else:
-                messages.append('No genres found or error fetching')
-        except Exception as e:
-            logger.error(f"Error during genre refresh process: {e}")
-            messages.append(f'Error processing genres: {str(e)}')
-            status_code = 500
+    except Exception as e:
+        logger.error(f"An unhandled exception occurred during refresh processing: {e}", exc_info=True)
+        messages.append("An unexpected server error occurred.")
+        return {'statusCode': 500, 'body': json.dumps({'messages': messages, 'success': False})}
 
     # If no refresh was requested
     if not messages:
         messages.append("No refresh action requested.")
 
-    return {'statusCode': status_code, 'body': json.dumps({'messages': messages})}
+    status_code = 200 if all_successful else 500
+    return {'statusCode': status_code, 'body': json.dumps({'messages': messages, 'success': all_successful})}

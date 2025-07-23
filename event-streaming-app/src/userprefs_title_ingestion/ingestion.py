@@ -141,7 +141,7 @@ def fetch_titles(api_key: str, sources: list, genres: list) -> list:
         logger.error(f"Error fetching titles from WatchMode: {e}")
         return [] # Return empty list on error to not fail the whole process
 
-def publish_titles_to_kinesis(titles: list):
+def publish_titles_to_kinesis(titles: list, source_ids: list, genre_ids: list):
     """Publish a list of title records to the Kinesis stream in batches."""
     if not titles:
         logger.info("No titles to publish.")
@@ -149,6 +149,9 @@ def publish_titles_to_kinesis(titles: list):
 
     records = []
     for title in titles:
+        title['source_ids'] = source_ids
+        title['genre_ids'] = genre_ids
+
         payload = {
             "header": {
                 "publishingComponent": "UserPrefsTitleIngestionFunction",
@@ -186,7 +189,7 @@ def lambda_handler(event, context):
 
         if preferences.get("sources") and preferences.get("genres"):
             titles = fetch_titles(api_key, preferences["sources"], preferences["genres"])
-            publish_titles_to_kinesis(titles)
+            publish_titles_to_kinesis(titles, preferences["sources"], preferences["genres"])
         else:
             logger.info("No user preferences found, nothing to ingest.")
 

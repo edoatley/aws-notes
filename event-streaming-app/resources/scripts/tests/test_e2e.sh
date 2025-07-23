@@ -9,7 +9,7 @@
 #    records and validates their content.
 # 4. Teardown: Cleans up the dummy data from DynamoDB.
 ################################################################
-
+DEBUG=true
 # Exit on error, treat unset variables as an error
 set -euo pipefail
 
@@ -49,23 +49,112 @@ setup_preferences() {
 }
 
 # Cleans up the data from DynamoDB
-teardown_preferences() {
-    print_info "Cleaning up test data from DynamoDB..."
+teardown_test_data() {
+     print_info "Cleaning up all test data from DynamoDB..."
+
     for pref_sk in "${PREFERENCES[@]}"; do
         aws --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" \
             dynamodb delete-item \
             --table-name "${TABLE_NAME}" \
             --key "{\"PK\": {\"S\": \"userpref:${TEST_USER_ID}\"}, \"SK\": {\"S\": \"${pref_sk}\"}}"
     done
+
+     # Clean up title and index records created by the consumer
+     if [[ -n "${KINESIS_RECORDS_JSON}" ]]; then
+         # Use jq to iterate over each record found in the Kinesis stream
+         echo "${KINESIS_RECORDS_JSON}" | jq -c '.Records[]' | while read -r record; do
+             local decoded_payload
+             decoded_payload=$(echo "$record" | jq -r '.Data' | base64 --decode)
+             local title_id source_ids genre_ids
+             title_id=$(echo "$decoded_payload" | jq -r '.payload.id')
+             source_ids=$(echo "$decoded_payload" | jq -r '.payload.source_ids[]')
+             genre_ids=$(echo "$decoded_payload" | jq -r '.payload.genre_ids[]')
+
+             # Delete the canonical record
+             aws dynamodb delete-item --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" \
+             --table-name "${TABLE_NAME}" --key "{\"PK\": {\"S\": \"title:${title_id}\"}, \"SK\": {\"S\": \"record\"}}" > /dev/null
+
+             # Delete all associated index records
+             for sid in $source_ids; do
+                 for gid in $genre_ids; do
+                     aws dynamodb delete-item --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" \
+                     --table-name "${TABLE_NAME}" --key "{\"PK\": {\"S\": \"source:${sid}:genre:${gid}\"}, \"SK\": {\"S\": \"title:${title_id}\"}}" > /dev/null
+                 done
+             done
+         done
+     fi
+
     print_success "✅ Teardown complete."
 }
+
+
+ # Verifies that the consumer correctly wrote data to DynamoDB
+ verify_dynamodb_output() {
+     print_info "Verifying DynamoDB output from consumer..."
+
+     # Extract data from the first Kinesis record to build our assertions
+     local first_record_data decoded_payload
+     first_record_data=$(echo "${KINESIS_RECORDS_JSON}" | jq -r '.Records[0].Data')
+     decoded_payload=$(echo "${first_record_data}" | base64 --decode)
+
+     local title_id source_id genre_id
+     title_id=$(echo "${decoded_payload}" | jq -r '.payload.id')
+     source_id=$(echo "${decoded_payload}" | jq -r '.payload.source_ids[0]')
+     genre_id=$(echo "${decoded_payload}" | jq -r '.payload.genre_ids[0]')
+
+     # DEBUG: if DEBUG flag set scan the whole table and print the results with one item per line
+     aws dynamodb scan --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" --table-name "${TABLE_NAME}"
+
+     # 1. Verify the canonical record was created
+     print_info "  - Checking for canonical title record..."
+     local canonical_item
+     canonical_item=$(aws dynamodb get-item --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" \
+         --table-name "${TABLE_NAME}" --key "{\"PK\": {\"S\": \"title:${title_id}\"}, \"SK\": {\"S\": \"record\"}}" | jq)
+
+     if [ "${DEBUG:-false}" = true ]; then
+         echo "${canonical_item}"
+     fi
+
+     if [[ -z "${canonical_item}" || $(echo "${canonical_item}" | jq 'has("Item") | not') == "true" ]]; then
+         print_error "❌ VERIFICATION FAILED: Canonical record for title ID ${title_id} not found."
+         exit 1
+     fi
+     print_success "    - Canonical record found."
+
+     # 2. Verify an inverted index record was created
+     print_info "  - Checking for inverted index record..."
+     local index_item
+     if [ "${DEBUG:-false}" = true ]; then
+       echo aws dynamodb get-item \
+                     --profile "${PROFILE_NAME}" \
+                     --endpoint-url "${ENDPOINT_URL}" \
+                     --table-name "${TABLE_NAME}" \
+                     --key "{\"PK\": {\"S\": \"source:${source_id}:genre:${genre_id}\"}, \"SK\": {\"S\": \"title:${title_id}\"}}"
+     fi
+     index_item=$(aws dynamodb get-item \
+         --profile "${PROFILE_NAME}" \
+         --endpoint-url "${ENDPOINT_URL}" \
+         --table-name "${TABLE_NAME}" \
+         --key "{\"PK\": {\"S\": \"source:${source_id}:genre:${genre_id}\"}, \"SK\": {\"S\": \"title:${title_id}\"}}" | jq)
+
+     if [ "${DEBUG:-false}" = true ]; then
+         echo "${index_item}"
+     fi
+
+     if [[ -z "${index_item}" || $(echo "${index_item}" | jq 'has("Item") | not') == "true" ]]; then
+         print_error "❌ VERIFICATION FAILED: Index record for source ${source_id} and genre ${genre_id} not found."
+         exit 1
+     fi
+
+     print_success "    - Index record found."
+ }
 
 # Invokes the Lambda function
 invoke_ingestion_lambda() {
     print_info "Invoking UserPrefsTitleIngestionFunction..."
     # We must be in the project root for sam to find the templates and build artifacts
     cd "${PROJECT_ROOT}"
-    output_text=$(sam local invoke "UserPrefsTitleIngestionFunction" \
+    output_text=$(sam local invoke "UserPrefsTitleIngestionApp/UserPrefsTitleIngestionFunction" \
       --event "events/userprefs_title_ingestion.json" \
       --env-vars "env/userprefs_title_ingestion.json" \
       --docker-network "${DOCKER_NETWORK}" \
@@ -177,8 +266,11 @@ verify_kinesis_output() {
 
       local output_text
       local exit_code
-      output_text=$(sam local invoke "TitleRecommendationsConsumerFunction" \
-        --event "${event_file}" 2>&1) || true
+      output_text=$(sam local invoke "TitleRecommendationsConsumerApp/TitleRecommendationsConsumerFunction" \
+        --event "${event_file}" \
+        --env-vars "env/title_recommendations_consumer.json" \
+        --docker-network "${DOCKER_NETWORK}" \
+        < /dev/null 2>&1) || true
       exit_code=$?
 
       # Clean up the temporary file
@@ -197,7 +289,7 @@ verify_kinesis_output() {
 }
 
 # --- Main Execution ---
-trap teardown_preferences EXIT # Use a trap to ensure teardown runs even if the script fails
+trap teardown_test_data EXIT # Use a trap to ensure teardown runs even if the script fails
 
 print_info "===== START: Integration Test for UserPrefsTitleIngestionFunction ====="
 
@@ -212,5 +304,8 @@ verify_kinesis_output
 
 print_info "--> STEP 4: Invoking the consumer with live data..."
 invoke_consumer_lambda
+
+print_info "--> STEP 5: Verifying the final DynamoDB state..."
+verify_dynamodb_output
 
 print_success "===== ✅ Integration Test Passed! ====="
