@@ -29,9 +29,9 @@
 
 - [x] Store TV reference data: A Lambda function will periodically fetch reference data and store in DynamoDB for use within the application
 - [x] A Simple RESTful API exposed via API Gateway and backed by a lambda that stores a users preferences.  
-- [ ] Ingest TV and streaming data: A Lambda function will periodically fetch the latest TV schedules and streaming availability for the UK from an external API (limited to those categories users have preference for).
+- [x] Ingest TV and streaming data: A Lambda function will periodically fetch the latest TV schedules and streaming availability for the UK from an external API (limited to those categories users have preference for).
+- [x] Store the program guide: The processed data will be stored in a DynamoDB table, optimized for efficient querying of shows, channels, and streaming services.
 - [ ] Process and enrich the data: The raw data will be sent to a Kinesis Data Stream for real-time processing. Another Lambda function will consume this data, clean it, and potentially enrich it with additional information (e.g., ratings from another source).
-- [ ] Store the program guide: The processed data will be stored in a DynamoDB table, optimized for efficient querying of shows, channels, and streaming services.
 - [ ] Real-time updates: DynamoDB Streams will capture any changes to the program data (e.g., a schedule update). A final Lambda function will be triggered by these streams to, for example, send notifications for favorited shows.
 - [ ] Add Google IdP federation
 - [ ] Provide a single page web app user interface (a static website hosted on S3) and login with google credentials
@@ -677,7 +677,7 @@ Note: The test script sets the `AWS_ENDPOINT_URL` to `http://localstack:4566` to
 
 ### Specialist Test Script for Title Ingestion
 
-To test the title ingestion we need a specialist script I created as [test_title_ingestion.sh](../scripts/tests/test_e2e.sh).
+To test the title ingestion we need a specialist script I created as [test_e2e.sh](../scripts/tests/test_e2e.sh).
 This script performs a full integration test of the `UserPrefsTitleIngestionFunction` by:
 
 - **Setting up** test data by creating a dummy user with specific source and genre preferences in the local DynamoDB instance.
@@ -685,6 +685,41 @@ This script performs a full integration test of the `UserPrefsTitleIngestionFunc
 - **Verifying** the outcome by polling the local Kinesis stream to ensure the correct title data was published.
 - **Tearing down** the test by automatically deleting the dummy user data from DynamoDB, ensuring a clean state for the next run.
 
+## Step 11 - store title data to DynamoDB
+
+The logic used in the new function to save titles to Dynamo named `TitleRecommendationsConsumerFunction` will be:
+
+1. Subscribe to Kinesis and read Title events published by `UserPrefsTitleIngestionFunction`
+2. Write a record to DynamoDB with PK `source:<source_id>:genre:<genre_id>` and SK `title:<title_id>`
+3. Write a record to DynamoDB with PK `title:<title_id>` and SK `record` and the `data` field containing the title payload
+
+The lambda source for this is in [src/title_recommendations_consumer](../../src/title_recommendations_consumer)
+
+We can now extend our [end-to-end test script](../scripts/tests/test_e2e.sh) to test this by adding:
+ - call to `TitleRecommendationsConsumerFunction` with published kinesis data
+ - check of dynamo for the expected rows
+
+## Step 12 - enrich the stored title data in DynamoDB
+
+To complete the "Process and enrich the data" step from our plan, we will now create a new `TitleEnrichmentFunction`. This function follows a robust, decoupled architecture using DynamoDB Streams.
+
+The process is as follows:
+
+1.  **Enable DynamoDB Streams**: We first enable DynamoDB Streams on the `ProgrammesTable`. This means any change to an item in the table (like an insert, update, or delete) will generate an event.
+2.  **Create the Enrichment Function**: A new Lambda function, `TitleEnrichmentFunction`, is created. Its code resides in `src/title_enrichment/`.
+3.  **Trigger from the Stream**: This function is configured to be triggered by the DynamoDB Stream from the `ProgrammesTable`. It will only process `INSERT` events for our canonical title records (i.e., items with a PK of `title:<id>` and SK of `record`).
+4.  **Fetch Details**: For each new title record, the function extracts the `title_id` and calls the WatchMode `/v1/title/{title_id}/details/` API endpoint.
+5.  **Update DynamoDB**: The function takes the detailed information returned from the API (like `plot_overview`, `poster`, `user_rating`) and performs an `UpdateItem` operation on the original canonical record in DynamoDB, adding this new enriched data.
+
+This asynchronous pattern ensures that our main ingestion pipeline (Kinesis -> Consumer) remains fast and is not blocked by calls to an external API. If the enrichment fails for any reason, Lambda will automatically retry the event from the stream, making the system highly resilient.
+
+We also write a specific test `event-streaming-app/resources/scripts/tests/test_enrichment.sh` to test the component.
+
+```output
+
+```
+
+With this passing we can then test the whole flow for real...
 
 ## Step x - schedule the API calls to get the shows and make it efficient
 

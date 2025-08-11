@@ -14,7 +14,8 @@ DEBUG=true
 set -euo pipefail
 
 # --- Configuration ---
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+#SCRIPT_DIR=${0:a:h}
 PROJECT_ROOT=$(cd "${SCRIPT_DIR}/../../.." && pwd)
 
 # Source the helper functions for colored output

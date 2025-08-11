@@ -53,8 +53,8 @@ Resources:
         - AttributeName: "SK"
           KeyType: "RANGE" # Sort key
       BillingMode: PAY_PER_REQUEST
-#      StreamSpecification:
-#        StreamViewType: NEW_AND_OLD_IMAGES
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
 
   ProgrammeDataStream:
     Type: AWS::Kinesis::Stream
@@ -142,6 +142,17 @@ Resources:
         ProgrammeDataStreamArn: !GetAtt ProgrammeDataStream.Arn
         ProgramDataTableName: !Ref ProgrammesTable
         ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
+
+  # Nested application for the Title Enrichment Lambda
+  TitleEnrichmentApp:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: title-enrichment.yaml
+      Parameters:
+        ProgramDataTableName: !Ref ProgrammesTable
+        ProgrammesTableStreamArn: !GetAtt ProgrammesTable.StreamArn
+        WatchModeApiKeySecretArn: !Ref WatchModeApiKeySecret
+        WatchModeHostname: !Ref WatchModeHostname
 
 Outputs:
   UserPoolId:

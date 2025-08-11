@@ -17,6 +17,7 @@ KINESIS_STREAM_NAME = os.environ.get('KINESIS_STREAM_NAME')
 WATCHMODE_HOSTNAME = os.environ.get('WATCHMODE_HOSTNAME')
 WATCHMODE_API_KEY_SECRET_ARN = os.environ.get('WATCHMODE_API_KEY_SECRET_ARN')
 AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL') # Check for LocalStack endpoint
+API_FETCH_LIMIT = int(os.environ.get('API_FETCH_LIMIT', '20'))
 USER_PREF_PREFIX = 'userpref:'
 
 # --- Global Clients & Cache ---
@@ -130,7 +131,8 @@ def fetch_titles(api_key: str, sources: list, genres: list) -> list:
         "source_ids": ",".join(sources),
         "genres": ",".join(genres),
         "regions": "GB",
-        "limit": 20 # Be a good citizen, limit the results for now
+        "limit": API_FETCH_LIMIT
+
     }
     try:
         response = requests.get(url, params=params, timeout=20)

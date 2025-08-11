@@ -3,13 +3,12 @@
 # Script to use sam invoke and run all the tests we have
 ##########################################################
 
-# Exit immediately if a command exits with a non-zero status.
-set -e
-# Treat unset variables as an error when substituting.
-set -u
+# Exit on error, treat unset variables as an error
+set -euo pipefail
 
 # Get the script directory and the directory from which to invoke the sam calls
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+#SCRIPT_DIR=${0:a:h}
 PROJECT_ROOT=$(cd "${SCRIPT_DIR}/../../.." && pwd)
 ENV_DIR="${PROJECT_ROOT}/env"
 EVENT_DIR="${PROJECT_ROOT}/events"
@@ -55,13 +54,13 @@ print_info "Running 'sam build' to prepare artifacts..."
 sam build
 
 # Run specialist tests for each function (Format: "FunctionName EventFile EnvFile")
- declare -a tests=(
-   "PeriodicReferenceApp/PeriodicReferenceFunction periodic_reference.json periodic_reference.json"
-   "UserPreferencesApp/UserPreferencesFunction user_prefs_get_sources.json user_preferences.json"
-   "UserPreferencesApp/UserPreferencesFunction user_prefs_get_genres.json user_preferences.json"
-   "UserPreferencesApp/UserPreferencesFunction user_prefs_put_preferences.json user_preferences.json"
-   "UserPreferencesApp/UserPreferencesFunction user_prefs_get_preferences.json user_preferences.json"
- )
+declare -a tests=(
+ "PeriodicReferenceApp/PeriodicReferenceFunction periodic_reference.json periodic_reference.json"
+ "UserPreferencesApp/UserPreferencesFunction user_prefs_get_sources.json user_preferences.json"
+ "UserPreferencesApp/UserPreferencesFunction user_prefs_get_genres.json user_preferences.json"
+ "UserPreferencesApp/UserPreferencesFunction user_prefs_put_preferences.json user_preferences.json"
+ "UserPreferencesApp/UserPreferencesFunction user_prefs_get_preferences.json user_preferences.json"
+)
 
 print_info "Running local tests..."
 for test_case in "${tests[@]}"; do
@@ -74,6 +73,9 @@ done
 
 print_info "Running local integration test..."
 bash "${SCRIPT_DIR}/test_e2e.sh"
+
+print_info "Running local enrichment test..."
+bash "${SCRIPT_DIR}/test_enrichment.sh"
 
 print_info "================================="
 print_success "All local tests passed successfully!"
