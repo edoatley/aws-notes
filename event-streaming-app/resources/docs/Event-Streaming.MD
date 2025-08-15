@@ -48,21 +48,23 @@ graph TD
         APIGW -- Invokes --> UserPrefsLambda[fa:fa-lambda UserPreferencesFunction]
     end
 
-    subgraph "Periodic Ingestion"
+    subgraph "Scheduled Ingestion"
         direction TB
         EventBridge(fa:fa-clock EventBridge Rule)
         EventBridge -- Triggers --> RefDataLambda[fa:fa-lambda PeriodicReferenceFunction]
         EventBridge -- Triggers --> TitleIngestionLambda[fa:fa-lambda UserPrefsTitleIngestionFunction]
     end
 
-    subgraph "Real-time Processing"
+    subgraph "Event-Driven Processing"
         direction TB
-        KinesisStream(fa:fa-stream Kinesis Data Stream) --> TitleConsumerLambda[fa:fa-lambda TitleRecommendationsConsumerFunction]
+        KinesisStream(fa:fa-stream Kinesis Data Stream) -- Invokes --> TitleConsumerLambda[fa:fa-lambda TitleRecommendationsConsumerFunction]
+        TitleConsumerLambda -- Writes to --> DynamoDB(fa:fa-database DynamoDB Table)
+        DynamoDB -- Creates Event --> DynamoDBStream(fa:fa-bolt DynamoDB Stream)
+        DynamoDBStream -- Invokes --> TitleEnrichmentLambda[fa:fa-lambda TitleEnrichmentFunction]
     end
 
     subgraph "Shared AWS Services"
         direction TB
-        DynamoDB(fa:fa-database DynamoDB Table)
         SecretsManager(fa:fa-key Secrets Manager)
     end
 
@@ -71,18 +73,20 @@ graph TD
     end
 
     %% --- Data & Event Flows ---
-    UserPrefsLambda -- Reads/Writes --> DynamoDB
+    UserPrefsLambda -- Reads/Writes User Prefs --> DynamoDB
 
     RefDataLambda -- Gets API Key --> SecretsManager
     RefDataLambda -- Fetches Sources/Genres --> WatchModeAPI
-    RefDataLambda -- Writes --> DynamoDB
+    RefDataLambda -- Writes Reference Data --> DynamoDB
 
     TitleIngestionLambda -- Gets API Key --> SecretsManager
     TitleIngestionLambda -- Reads All User Prefs --> DynamoDB
     TitleIngestionLambda -- Fetches Titles --> WatchModeAPI
     TitleIngestionLambda -- Publishes Events --> KinesisStream
 
-    TitleConsumerLambda -- Writes Processed Titles --> DynamoDB
+    TitleEnrichmentLambda -- Gets API Key --> SecretsManager
+    TitleEnrichmentLambda -- Fetches Details --> WatchModeAPI
+    TitleEnrichmentLambda -- Updates Title Record --> DynamoDB
 ```
 
 ## Step 1 - Initial set up
@@ -716,12 +720,25 @@ This asynchronous pattern ensures that our main ingestion pipeline (Kinesis -> C
 We also write a specific test `event-streaming-app/resources/scripts/tests/test_enrichment.sh` to test the component.
 
 ```output
-
+[INFO]  2025-08-11T17:16:35.695Z                Using LocalStack endpoint for DynamoDB: http://localstack:4566
+[INFO]  2025-08-11T17:16:35.717Z                Found credentials in environment variables.
+[INFO]  2025-08-11T17:16:35.773Z                Successfully initialized DynamoDB table client for: UKTVProgrammesLocal
+[INFO]  2025-08-11T17:16:35.778Z                Initialized Secrets Manager client.
+[INFO]  2025-08-11T17:16:35.786Z        47005d0b-a3e4-4a98-94a4-f4d5c24b8924    Enriching title ID: 3226810
+[INFO]  2025-08-11T17:16:36.393Z        47005d0b-a3e4-4a98-94a4-f4d5c24b8924    Successfully enriched title ID: 3226810
+END RequestId: 47005d0b-a3e4-4a98-94a4-f4d5c24b8924
+REPORT RequestId: 47005d0b-a3e4-4a98-94a4-f4d5c24b8924  Init Duration: 0.03 ms  Duration: 1048.29 ms    Billed Duration: 1049 ms        Memory Size: 256 MB     Max Memory Used: 256 MB 
+{"message": "Processed 1 records."}
 ```
 
 With this passing we can then test the whole flow for real...
 
+## Step 13 - deploy to AWS and run an E2E test (taking cost safeguards)
+
 ## Step x - schedule the API calls to get the shows and make it efficient
+
+As it stands the flow is as follows:
+
 
 ## Cleanup
 

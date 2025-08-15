@@ -61,13 +61,26 @@ verify_enrichment() {
     item_json=$(aws dynamodb get-item --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" \
         --table-name "${TABLE_NAME}" --key "{\"PK\": {\"S\": \"title:${TEST_TITLE_ID}\"}, \"SK\": {\"S\": \"record\"}}")
 
-    # Use jq to check if the 'plot_overview' field was added inside the 'data' map
-    if echo "${item_json}" | jq -e '.Item.data.M.plot_overview' > /dev/null; then
-        print_success "✅ VERIFICATION PASSED: Item was successfully enriched."
-    else
-        print_error "❌ VERIFICATION FAILED: Item was not enriched with new data."
-        echo "Item data found:"
+    # Check if the item was found at all
+    if ! echo "${item_json}" | jq -e '.Item' > /dev/null; then
+        print_error "❌ VERIFICATION FAILED: Could not find item with PK title:${TEST_TITLE_ID}."
+        echo "Response from get-item:"
         echo "${item_json}" | jq
+        exit 1
+    fi
+
+    # Extract the 'data' map for easier validation and print it
+    local data_map
+    data_map=$(echo "${item_json}" | jq '.Item.data.M')
+
+    print_info "  - Enriched data found:"
+    echo "${data_map}" | jq .
+
+    # Validate that specific enriched fields exist and are not the default 'N/A'
+    if echo "${data_map}" | jq -e '(.plot_overview.S and .plot_overview.S != "N/A") and (.poster.S and .poster.S != "N/A") and .user_rating.N' > /dev/null; then
+        print_success "✅ VERIFICATION PASSED: Item was successfully enriched with plot, poster, and rating."
+    else
+        print_error "❌ VERIFICATION FAILED: One or more enriched fields are missing or have default values."
         exit 1
     fi
 }

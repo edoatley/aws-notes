@@ -1,6 +1,7 @@
 # src/title_enrichment/enrichment.py
 import os
 import boto3
+import json
 import requests
 from decimal import Decimal
 import logging
@@ -128,4 +129,4 @@ def lambda_handler(event, context):
             logger.error(f"Failed to process record {pk}: {e}", exc_info=True)
             # Continue to next record
 
-    return {'message': f"Processed {len(event.get('Records', []))} records."}
+    return {'statusCode': 200, 'body': json.dumps({'message': f"Processed {len(event.get('Records', []))} records."})}

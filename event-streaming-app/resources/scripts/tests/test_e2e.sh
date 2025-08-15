@@ -104,16 +104,17 @@ teardown_test_data() {
      genre_id=$(echo "${decoded_payload}" | jq -r '.payload.genre_ids[0]')
 
      # DEBUG: if DEBUG flag set scan the whole table and print the results with one item per line
-     aws dynamodb scan --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" --table-name "${TABLE_NAME}"
+     if [ "${DEBUG:-false}" = true ]; then
+        aws dynamodb scan --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" --table-name "${TABLE_NAME}" --output json | jq -c '.Items[]'
+     fi
 
      # 1. Verify the canonical record was created
      print_info "  - Checking for canonical title record..."
      local canonical_item
-     canonical_item=$(aws dynamodb get-item --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" \
-         --table-name "${TABLE_NAME}" --key "{\"PK\": {\"S\": \"title:${title_id}\"}, \"SK\": {\"S\": \"record\"}}" | jq)
+     canonical_item=$(aws dynamodb get-item --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" --table-name "${TABLE_NAME}" --key "{\"PK\": {\"S\": \"title:${title_id}\"}, \"SK\": {\"S\": \"record\"}}")
 
      if [ "${DEBUG:-false}" = true ]; then
-         echo "${canonical_item}"
+         echo "${canonical_item}" | jq
      fi
 
      if [[ -z "${canonical_item}" || $(echo "${canonical_item}" | jq 'has("Item") | not') == "true" ]]; then
@@ -132,14 +133,10 @@ teardown_test_data() {
                      --table-name "${TABLE_NAME}" \
                      --key "{\"PK\": {\"S\": \"source:${source_id}:genre:${genre_id}\"}, \"SK\": {\"S\": \"title:${title_id}\"}}"
      fi
-     index_item=$(aws dynamodb get-item \
-         --profile "${PROFILE_NAME}" \
-         --endpoint-url "${ENDPOINT_URL}" \
-         --table-name "${TABLE_NAME}" \
-         --key "{\"PK\": {\"S\": \"source:${source_id}:genre:${genre_id}\"}, \"SK\": {\"S\": \"title:${title_id}\"}}" | jq)
+     index_item=$(aws dynamodb get-item --profile "${PROFILE_NAME}" --endpoint-url "${ENDPOINT_URL}" --table-name "${TABLE_NAME}" --key "{\"PK\": {\"S\": \"source:${source_id}:genre:${genre_id}\"}, \"SK\": {\"S\": \"title:${title_id}\"}}")
 
      if [ "${DEBUG:-false}" = true ]; then
-         echo "${index_item}"
+         echo "${index_item}" | jq
      fi
 
      if [[ -z "${index_item}" || $(echo "${index_item}" | jq 'has("Item") | not') == "true" ]]; then
