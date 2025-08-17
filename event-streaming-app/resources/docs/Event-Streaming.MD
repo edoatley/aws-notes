@@ -191,7 +191,6 @@ Operation                                                                       
 + Add                                                                                                     PeriodicDataIngestionFunction                                                                             AWS::Lambda::Function                                                                                     N/A                                                                                                     
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
                                                                                                                                                                                                                                                                                                                                                                                                                                           
-
 Changeset created successfully. arn:aws:cloudformation:eu-west-2:727361020121:changeSet/samcli-deploy1749907838/954f1210-32f8-4a6c-82cc-af651fd9a9cd
 
 
@@ -216,7 +215,6 @@ Description         ARN of the Periodic Data Ingestion Lambda function
 Value               arn:aws:lambda:eu-west-2:727361020121:function:PeriodicUKTVDataIngestionFunction                                                                                                                                                                                                                                                                                                                                  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
                                                                                                                                                                                                                                                                                                                                                                                                                                           
-
 Successfully created/updated stack - sam-local-deploy-periodic-ingestion in eu-west-2
 ```
 
@@ -735,9 +733,28 @@ With this passing we can then test the whole flow for real...
 
 ## Step 13 - deploy to AWS and run an E2E test (taking cost safeguards)
 
-## Step x - schedule the API calls to get the shows and make it efficient
+## Step 14 - add the EventBridge triggers
 
-As it stands the flow is as follows:
+## Step 15 - schedule the API calls to get the shows and make it efficient
+
+#TODO: validate the content below from Gemini
+
+The current title ingestion process (`UserPrefsTitleIngestionFunction`) is scheduled periodically and works by:
+1.  Scanning DynamoDB to find all user preference items across all users.
+2.  Aggregating all `source_ids` and `genre_ids` into two global, unique lists.
+3.  Making a single API call to the WatchMode `/v1/list-titles` endpoint using these two aggregated lists.
+
+This approach is inefficient because it fetches titles for every possible combination of all unique sources and genres, 
+rather than just the specific combinations users have expressed preferences for. For example, if one user likes Comedies
+on Netflix and another likes Dramas on Prime, the current system fetches titles for 
+`(Netflix, Comedy)`, `(Netflix, Drama)`, `(Prime, Comedy)`, and `(Prime, Drama)`, even though only two of those 
+combinations were actually requested. This results in fetching and processing unnecessary data. The current implementation
+also lacks pagination, meaning it may not retrieve all available titles if the result set is large.
+
+A more efficient and accurate approach would be to modify the ingestion logic to:
+1.  Gather all unique **source and genre combinations** that users have explicitly selected (e.g., `(Netflix, Comedy)`, `(Prime, Drama)`).
+2.  Make a single, paginated API call to WatchMode that can filter on these specific combinations. This ensures we only fetch titles that match at least one user's specific preference, eliminating irrelevant data, reducing downstream processing load, and making the recommendations more accurate.
+
 
 
 ## Cleanup
