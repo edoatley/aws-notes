@@ -1,0 +1,10 @@
+openai
+google-generativeai
+Pillow
+torch
+sentence-transformers
+scikit-learn
+langchain
+faiss-cpu
+llama-cpp-python
+flask
