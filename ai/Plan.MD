@@ -1,5 +1,47 @@
 # **A Developer's Roadmap to Applied AI: A 9-Week Hands-On Learning Plan**
 
+<!-- TOC -->
+* [**A Developer's Roadmap to Applied AI: A 9-Week Hands-On Learning Plan**](#a-developers-roadmap-to-applied-ai-a-9-week-hands-on-learning-plan)
+    * [**Expert Contributor: Senior AI Specialist & Engineering Mentor**](#expert-contributor-senior-ai-specialist--engineering-mentor)
+    * [**The 9-Week Plan: From API Calls to Custom Applications**](#the-9-week-plan-from-api-calls-to-custom-applications)
+    * [**Prerequisites and Environment Setup**](#prerequisites-and-environment-setup)
+  * [**Part 1: Interacting with Managed AI Services**](#part-1-interacting-with-managed-ai-services)
+    * [**Week 1: Your First Conversation with an AI - The OpenAI API**](#week-1-your-first-conversation-with-an-ai---the-openai-api)
+      * [**Conceptual Focus: LLMs as a New API Paradigm**](#conceptual-focus-llms-as-a-new-api-paradigm)
+      * [**Hands-On Exercise: A Python-based Chat Completion Script**](#hands-on-exercise-a-python-based-chat-completion-script)
+    * [**Week 2: Exploring a Multimodal World \- The Google Gemini API**](#week-2-exploring-a-multimodal-world---the-google-gemini-api)
+      * [**Conceptual Focus: The Competitive and Multimodal Landscape**](#conceptual-focus-the-competitive-and-multimodal-landscape)
+      * [**Hands-On Exercise: A Multimodal Query with Gemini**](#hands-on-exercise-a-multimodal-query-with-gemini)
+  * [**Part 2: Bringing AI In-House with Local Models**](#part-2-bringing-ai-in-house-with-local-models)
+    * [**Week 3: Running Your First Local LLM with Ollama**](#week-3-running-your-first-local-llm-with-ollama)
+      * [**Conceptual Focus: The Open-Source AI Ecosystem**](#conceptual-focus-the-open-source-ai-ecosystem)
+      * [**Hands-On Exercise: Chat with a Local Model via CLI**](#hands-on-exercise-chat-with-a-local-model-via-cli)
+    * [**Week 4: Containerizing Intelligence with Docker**](#week-4-containerizing-intelligence-with-docker)
+      * [**Conceptual Focus: From Experiment to Service**](#conceptual-focus-from-experiment-to-service)
+      * [**Hands-On Exercise: Build and Run a Self-Contained LLM API**](#hands-on-exercise-build-and-run-a-self-contained-llm-api)
+      * [**Architectural Trade-offs: Cloud APIs vs. Local Deployment**](#architectural-trade-offs-cloud-apis-vs-local-deployment)
+  * [**Part 3: Building an AI-Powered Application from Scratch**](#part-3-building-an-ai-powered-application-from-scratch)
+    * [**Week 5: The DNA of AI Understanding \- Vector Embeddings**](#week-5-the-dna-of-ai-understanding---vector-embeddings)
+      * [**Conceptual Focus: Coordinates for Meaning**](#conceptual-focus-coordinates-for-meaning)
+      * [**Hands-On Exercise: Finding Similar Sentences**](#hands-on-exercise-finding-similar-sentences)
+    * [**Week 6: Building a RAG System, Part 1 \- The Knowledge Base**](#week-6-building-a-rag-system-part-1---the-knowledge-base)
+      * [**Conceptual Focus: The "Retrieval" Pipeline**](#conceptual-focus-the-retrieval-pipeline)
+      * [**Hands-On Exercise: Creating a Vector Store from a Document**](#hands-on-exercise-creating-a-vector-store-from-a-document)
+    * [**Week 7: Building a RAG System, Part 2 \- The Full Loop**](#week-7-building-a-rag-system-part-2---the-full-loop)
+      * [**Conceptual Focus: Completing the RAG Loop**](#conceptual-focus-completing-the-rag-loop)
+      * [**Hands-On Exercise: A Command-Line Q\&A Chatbot**](#hands-on-exercise-a-command-line-qa-chatbot)
+  * [**Part 4: The Path Forward**](#part-4-the-path-forward)
+    * [**Week 8: The Next Level \- An Introduction to Fine-Tuning**](#week-8-the-next-level---an-introduction-to-fine-tuning)
+      * [**Conceptual Focus: Knowledge vs. Skill**](#conceptual-focus-knowledge-vs-skill)
+      * [**Hands-On Exercise: A Guided Thought Experiment**](#hands-on-exercise-a-guided-thought-experiment)
+    * [**Week 9: Staying Sharp \- Curating Your AI Information Diet**](#week-9-staying-sharp---curating-your-ai-information-diet)
+      * [**Conceptual Focus: From Firehose to Filtered Stream**](#conceptual-focus-from-firehose-to-filtered-stream)
+      * [**Hands-On Exercise: Building a Learning Dashboard**](#hands-on-exercise-building-a-learning-dashboard)
+      * [**Curated AI Resources for Developers**](#curated-ai-resources-for-developers)
+  * [**Conclusion: From Overwhelmed to Empowered**](#conclusion-from-overwhelmed-to-empowered)
+      * [**Works cited**](#works-cited)
+<!-- TOC -->
+
 ### **Expert Contributor: Senior AI Specialist & Engineering Mentor**
 
 This report is designed for experienced software developers who find themselves at a professional crossroads, observing the rapid ascent of Artificial Intelligence and feeling overwhelmed by the pace of change. It reframes AI not as an arcane discipline to be feared, but as the next evolution in the developer's toolkit—a powerful set of capabilities that can be mastered and integrated into the software development lifecycle. The core premise of this guide is that your existing skills in API integration, data handling, and system architecture are not just relevant but are the perfect foundation for building sophisticated AI-powered applications.  

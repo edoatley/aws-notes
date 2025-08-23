@@ -296,3 +296,90 @@ use a more compact model
 
 ## Week 5 - The DNA of AI Understanding - Vector Embeddings
 
+1. Create the python script [week5_embeddings.py](week5/week5_embeddings.py)
+
+2. Run the script:
+
+```bash
+(.venv) ➜  ai git:(ai) ✗ .venv/bin/python week5/week5_embeddings.py 
+```
+
+3. Thewre was an error which appears to be because of numpy version 2+ is not compatible with the  But did have some errors at the top:
+
+```output
+(.venv) ➜  ai git:(ai) ✗ .venv/bin/python week5/week5_embeddings.py
+
+
+A module that was compiled using NumPy 1.x cannot be run in
+NumPy 2.3.2 as it may crash. To support both 1.x and 2.x
+versions of NumPy, modules must be compiled with NumPy 2.0.
+Some module may need to rebuild instead e.g. with 'pybind11>=2.12'.
+
+If you are a user of the module, the easiest solution will be to
+downgrade to 'numpy<2' or try to upgrade the affected module.
+We expect that some modules will need time to support NumPy 2.
+
+Traceback (most recent call last):  File "/Users/edoatley/source/aws-notes/ai/week5/week5_embeddings.py", line 1, in <module>
+from sentence_transformers import SentenceTransformer, util
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/sentence_transformers/__init__.py", line 10, in <module>
+from sentence_transformers.backend import (
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/sentence_transformers/backend/__init__.py", line 3, in <module>
+from .load import load_onnx_model, load_openvino_model
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/sentence_transformers/backend/load.py", line 7, in <module>
+from transformers.configuration_utils import PretrainedConfig
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/transformers/__init__.py", line 27, in <module>
+from . import dependency_versions_check
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/transformers/dependency_versions_check.py", line 16, in <module>
+from .utils.versions import require_version, require_version_core
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/transformers/utils/__init__.py", line 24, in <module>
+from .auto_docstring import (
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/transformers/utils/auto_docstring.py", line 30, in <module>
+from .generic import ModelOutput
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/transformers/utils/generic.py", line 53, in <module>
+import torch  # noqa: F401
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/torch/__init__.py", line 1477, in <module>
+from .functional import *  # noqa: F403
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/torch/functional.py", line 9, in <module>
+import torch.nn.functional as F
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/torch/nn/__init__.py", line 1, in <module>
+from .modules import *  # noqa: F403
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/torch/nn/modules/__init__.py", line 35, in <module>
+from .transformer import TransformerEncoder, TransformerDecoder, \
+File "/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/torch/nn/modules/transformer.py", line 20, in <module>
+device: torch.device = torch.device(torch._C._get_default_device()),  # torch.device('cpu'),
+/Users/edoatley/source/aws-notes/ai/.venv/lib/python3.12/site-packages/torch/nn/modules/transformer.py:20: UserWarning: Failed to initialize NumPy: _ARRAY_API not found (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:84.)
+device: torch.device = torch.device(torch._C._get_default_device()),  # torch.device('cpu'),
+```
+
+This could be fixed with this [requirements.txt](week5/requirements.txt) but I won't do that as it will impact other 
+exercises I am doing here...
+
+4. Especially as it did give good output:
+
+```output
+Loading embedding model...
+modules.json: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 349/349 [00:00<00:00, 664kB/s]
+config_sentence_transformers.json: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 116/116 [00:00<00:00, 1.01MB/s]
+README.md: 10.5kB [00:00, 34.0MB/s]
+sentence_bert_config.json: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 53.0/53.0 [00:00<00:00, 381kB/s]
+config.json: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 612/612 [00:00<00:00, 3.76MB/s]
+model.safetensors: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 90.9M/90.9M [00:12<00:00, 7.13MB/s]
+tokenizer_config.json: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 350/350 [00:00<00:00, 2.12MB/s]
+vocab.txt: 232kB [00:00, 15.3MB/s]
+tokenizer.json: 466kB [00:00, 14.5MB/s]
+special_tokens_map.json: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 112/112 [00:00<00:00, 773kB/s]
+config.json: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 190/190 [00:00<00:00, 1.43MB/s]
+Model loaded.
+
+Generating embeddings for the corpus...
+Shape of corpus embeddings tensor: torch.Size([8, 384])
+
+Query: 'A man is riding an animal.'
+
+--- Search Results ---
+Most similar sentence in corpus: 'A man is riding a horse.'
+Similarity score: 0.7888
+```
+
+## **Week 6: Building a RAG System, Part 1 - The Knowledge Base
+
