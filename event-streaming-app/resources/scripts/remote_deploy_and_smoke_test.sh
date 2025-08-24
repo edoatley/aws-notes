@@ -45,13 +45,14 @@ fi
 ########################################################################################################################
 echo "🚀 Step 3: Deploying the application with SAM..."
 ########################################################################################################################
-sam build && sam deploy \
-  --stack-name "$STACK_NAME" \
-  --profile "$PROFILE" \
-  --region "$REGION" \
-  --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-   --parameter-overrides "CreateDataStream=true" "WatchModeApiKey=${WATCHMODE_API_KEY}" \
-  --no-confirm-changeset
+sam build --use-container
+
+sam deploy \
+    --stack-name "$STACK_NAME" \
+    --profile "$PROFILE" \
+    --region "$REGION" \
+    --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+     --parameter-overrides "CreateDataStream=true" "WatchModeApiKey=${WATCHMODE_API_KEY}"
 
 echo "✅ Deployment complete."
 echo "⏳ Waiting for 30 seconds for resources to initialize..."
@@ -133,6 +134,7 @@ echo "⏳ Step 8: Dump data from DynamoDB..."
 # Extract the rows in the DynamoDB table as an array of JSON objects and store in a file
 aws dynamodb scan \
   --table-name "$TABLE_NAME" \
+  --profile "$PROFILE" \
 > export.json
 
 
