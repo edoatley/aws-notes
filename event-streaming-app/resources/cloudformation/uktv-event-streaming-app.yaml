@@ -164,3 +164,6 @@ Outputs:
   TestUsername:
     Description: "The username of the pre-created test user"
     Value: !Ref TestUserName
+  ProgrammesTable:
+    Description: "The name of the DynamoDB table for programmes"
+    Value: !Ref ProgrammesTable

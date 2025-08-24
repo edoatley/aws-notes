@@ -73,6 +73,8 @@ Resources:
           WATCHMODE_API_KEY_SECRET_ARN: !Ref WatchModeApiKeySecretArn
           WATCHMODE_HOSTNAME: !Ref WatchModeHostname
           AWS_ENDPOINT_URL: "" # for testing
+    Metadata:
+      BuildMethod: python3.12
 
 Outputs:
   PeriodicReferenceFunctionName:

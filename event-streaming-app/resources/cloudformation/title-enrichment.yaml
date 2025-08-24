@@ -38,7 +38,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - dynamodb:UpdateItem # Permission to update the record
-                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::Account}:table/${ProgramDataTableName}"
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProgramDataTableName}"
               - Effect: Allow
                 Action:
                   - dynamodb:GetRecords
@@ -75,3 +75,5 @@ Resources:
           WATCHMODE_API_KEY_SECRET_ARN: !Ref WatchModeApiKeySecretArn
           WATCHMODE_HOSTNAME: !Ref WatchModeHostname
           AWS_ENDPOINT_URL: "" # for testing
+    Metadata:
+      BuildMethod: python3.12

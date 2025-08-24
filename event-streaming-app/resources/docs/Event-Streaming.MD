@@ -21,7 +21,11 @@
     * [LocalStack setup](#localstack-setup)
     * [LocalStack setup](#localstack-setup-1)
     * [Specialist Test Script for Title Ingestion](#specialist-test-script-for-title-ingestion)
-  * [Step x - schedule the API calls to get the shows and make it efficient](#step-x---schedule-the-api-calls-to-get-the-shows-and-make-it-efficient)
+  * [Step 11 - store title data to DynamoDB](#step-11---store-title-data-to-dynamodb)
+  * [Step 12 - enrich the stored title data in DynamoDB](#step-12---enrich-the-stored-title-data-in-dynamodb)
+  * [Step 13 - deploy to AWS and run an E2E test (taking cost safeguards)](#step-13---deploy-to-aws-and-run-an-e2e-test-taking-cost-safeguards)
+  * [Step 14 - add the EventBridge triggers](#step-14---add-the-eventbridge-triggers)
+  * [Step 15 - schedule the API calls to get the shows and make it efficient](#step-15---schedule-the-api-calls-to-get-the-shows-and-make-it-efficient)
   * [Cleanup](#cleanup)
 <!-- TOC -->
 
@@ -732,6 +736,18 @@ REPORT RequestId: 47005d0b-a3e4-4a98-94a4-f4d5c24b8924  Init Duration: 0.03 ms  
 With this passing we can then test the whole flow for real...
 
 ## Step 13 - deploy to AWS and run an E2E test (taking cost safeguards)
+
+We now have the majority of the event pipeline working. We now can deploy it to AWS for real and run a basic test. The 
+steps are:
+
+1. Deploy the application using AWS SAM
+2. Trigger the reference data refresh
+3. Create a user preference for a single source and genre
+4. Trigger the user preferences ingestion
+5. Review the data in DynamoDB
+6. Teardown the infrastructure again
+
+This should all be automated in a file [remote_deploy_and_smoke_test.sh](../scripts/remote_deploy_and_smoke_test.sh)
 
 ## Step 14 - add the EventBridge triggers
 
