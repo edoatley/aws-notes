@@ -7,6 +7,10 @@
   * [Week 2 - Exploring a Multimodal World - The Google Gemini API](#week-2---exploring-a-multimodal-world---the-google-gemini-api)
   * [Week 3 - Running Your First Local LLM with Ollama](#week-3---running-your-first-local-llm-with-ollama)
   * [Week 4 - Containerizing Intelligence with Docker](#week-4---containerizing-intelligence-with-docker)
+  * [Week 5 - The DNA of AI Understanding - Vector Embeddings](#week-5---the-dna-of-ai-understanding---vector-embeddings)
+  * [**Week 6: Building a RAG System, Part 1 - The Knowledge Base](#week-6-building-a-rag-system-part-1---the-knowledge-base)
+  * [Week 7: Building a RAG System, Part 2 - The Full Loop](#week-7-building-a-rag-system-part-2---the-full-loop)
+  * [Takeaways](#takeaways)
 <!-- TOC -->
 
 Following the [Plan](./Plan.MD)
@@ -381,5 +385,159 @@ Most similar sentence in corpus: 'A man is riding a horse.'
 Similarity score: 0.7888
 ```
 
-## **Week 6: Building a RAG System, Part 1 - The Knowledge Base
+## Week 6: Building a RAG System, Part 1 - The Knowledge Base
 
+1. Create the script [week6_create_db.py](week6/week6_create_db.py)
+
+2. Create a text document [my_document.txt](week6/my_document.txt)
+
+3. Run the script:
+
+```bash
+.venv/bin/python week6/week6_create_db.py week6/my_document.txt
+```
+
+4. This failed with:
+
+```output
+RuntimeError: Numpy is not available
+```
+
+so this time the numpy issue is unavoidable so I updated te requirements.txt
+file and the code to use compatible packages:
+
+```txt
+langchain
+langchain-community
+langchain-text-splitters
+sentence-transformers
+faiss-cpu
+numpy<2.0
+langchain-huggingface
+```
+ 
+5. Ran the script again:
+
+```bash
+(.venv) ➜  ai git:(ai) ✗ .venv/bin/python week6/week6_create_db.py week6/my_document.txt 
+Loading document from 'week6/my_document.txt'...
+Document loaded. Contains 1 part(s).
+Splitting document into chunks...
+Document split into 1 chunks.
+Initializing embedding model 'all-MiniLM-L6-v2'...
+Creating FAISS vector store from chunks...
+Vector store created in memory.
+Vector store saved to disk at 'my_faiss_index'.
+```
+
+So it worked this time.
+
+## Week 7: Building a RAG System, Part 2 - The Full Loop
+
+1. Created a script [week7_rag_chatbot.py](week7/week7_rag_chatbot.py)
+
+2. Ameded `VECTOR_STORE_PATH` to match it's absolute path (/Users/edoatley/source/aws-notes/ai/week6/my_faiss_index)
+
+3. Ran the script:
+
+```bash
+.venv/bin/python week7/week7_rag_chatbot.py
+```
+
+4. This gave the error:
+
+```output
+Traceback (most recent call last):
+  File "/Users/edoatley/source/aws-notes/ai/week7/week7_rag_chatbot.py", line 3, in <module>
+    from langchain_openai import ChatOpenAI
+ModuleNotFoundError: No module named 'langchain_openai'
+```
+
+so we can update [requirements.txt](requirements.txt) to include `langchain-openai` and refresh the dependencies:
+
+```bash
+.venv/bin/pip install -r requirements.txt
+```
+
+5. Tried again:
+
+```bash
+(.venv) ➜  ai git:(ai) ✗ .venv/bin/python week7/week7_rag_chatbot.py
+Loading vector store and embedding model...
+/Users/edoatley/source/aws-notes/ai/week7/week7_rag_chatbot.py:25: LangChainDeprecationWarning: The class `HuggingFaceEmbeddings` was deprecated in LangChain 0.2.2 and will be removed in 1.0. An updated version of the class exists in the :class:`~langchain-huggingface package and should be used instead. To use it run `pip install -U :class:`~langchain-huggingface` and import as `from :class:`~langchain_huggingface import HuggingFaceEmbeddings``.
+  embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+Vector store and model loaded.
+Initializing LLM 'gpt-4o'...
+
+--- RAG Chatbot Initialized ---
+Ask a question about your document. Type 'exit' to quit.
+
+Your Question: What is the important thing to consider when embracing AI?
+... retrieving context and generating answer...
+huggingface/tokenizers: The current process just got forked, after parallelism has already been used. Disabling parallelism to avoid deadlocks...
+To disable this warning, you can either:
+        - Avoid using `tokenizers` before the fork if possible
+        - Explicitly set the environment variable TOKENIZERS_PARALLELISM=(true | false)
+huggingface/tokenizers: The current process just got forked, after parallelism has already been used. Disabling parallelism to avoid deadlocks...
+To disable this warning, you can either:
+        - Avoid using `tokenizers` before the fork if possible
+        - Explicitly set the environment variable TOKENIZERS_PARALLELISM=(true | false)
+
+Answer: The important thing to consider when embracing AI is the shift in mindset from traditional deterministic software development to a probabilistic paradigm where the focus is on building and guiding systems to discover underlying patterns and relationships, rather than writing explicit, rule-based logic. 
+```
+
+## Takeaways
+
+1. Trivial with the `openai` Python package to interact with openai - [week1_openai_chat.py](week1/week1_openai_chat.py)
+
+2. Gemini model does a good job of multi-modal interactions, easily share images and a text prompt with the model to
+   get a response - [week2_gemini_vision.py](week2/week2_gemini_vision.py)
+
+3. [Ollama](https://ollama.com/download/mac) can be used to download LLM models, create a custom one [week3/mario.modelfile](week3/mario.modelfile)
+   and run models
+
+4. We can containerise an LLM and use flask to expose and inference endpoint - [Dockerfile](week4/Dockerfile)
+
+5. We can compare similarity of text using an embedding model - [week5_embeddings.py](week5/week5_embeddings.py)
+
+6. We can generate embeddings for custom bodies of text and store to a vector database - [week6_create_db.py](week6/week6_create_db.py)
+
+7. We can use the custom embeddings to ask questions of the data - [week7_rag_chatbot.py](week7/week7_rag_chatbot.py)
+
+## Veo3 
+
+Veo3 is an video generation model from Google. Here we will attempt to generate an video from a text prompt.
+
+1. Added `google-genai` to `requirements.txt`
+
+2. Created the script [image.py](veo3/video.py)
+
+3. Ran the script:
+
+```bash
+➜  ai git:(ai) ✗ .venv/bin/python veo3/video.py dancing_dog.mp4 "A cheeky and cute looking dachschund puppy frolics and leaps about with it's mother playing with a ball. The background is bright and cheerful and the dogs yip happily"
+```
+
+but got this error:
+
+```output
+google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.', 'status': 'RESOURCE_EXHAUSTED'}}
+```
+
+which was because my `GEMINI_API_KEY` was a free tier one so:
+
+- Added aI navigated to create a new [Google cloud project](https://console.cloud.google.com/projectcreate)
+- Clicked to create a new API key in [AI Studio](https://aistudio.google.com/apikey)
+
+4. Reran the script
+
+```bash
+➜  ai git:(ai) ✗ .venv/bin/python veo3/video.py dancing_dog.mp4 "A cheeky and cute looking dachschund puppy frolics and leaps about with it's mother playing with a ball. The background is bright and cheerful and the dogs yip happily"
+Waiting for video generation to complete...
+Waiting for video generation to complete...
+Waiting for video generation to complete...
+Waiting for video generation to complete...
+Waiting for video generation to complete...
+Generated video saved to /Users/edoatley/source/aws-notes/ai/veo3/results/dancing_dog.mp4
+
+```
