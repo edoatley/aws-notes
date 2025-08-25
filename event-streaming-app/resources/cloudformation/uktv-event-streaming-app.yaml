@@ -63,6 +63,69 @@ Resources:
       StreamModeDetails:
         StreamMode: ON_DEMAND
 
+  # S3 Bucket for Website Hosting
+  WebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-website-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+
+  WebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "${WebsiteBucket}/*"
+
+  # Website Deployment Lambda Function
+  WebsiteDeploymentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: website_deployment.lambda_handler
+      Runtime: python3.12
+      CodeUri: ../../src/website_deployment/
+      MemorySize: 256
+      Timeout: 300
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:PutObjectAcl
+                - s3:PutObjectTagging
+              Resource: !Sub "${WebsiteBucket}/*"
+      Environment:
+        Variables:
+          WEBSITE_BUCKET: !Ref WebsiteBucket
+      Events:
+        WebsiteDeployment:
+          Type: CloudFormation
+          Properties:
+            Target: WebsiteDeployment
+
+  # Custom Resource for Website Deployment
+  WebsiteDeployment:
+    Type: Custom::WebsiteDeployment
+    Properties:
+      ServiceToken: !GetAtt WebsiteDeploymentFunction.Arn
+      BucketName: !Ref WebsiteBucket
+      Region: !Ref AWS::Region
+      UserPoolId: !Ref UserPreferencesUserPool
+      UserPoolClientId: !Ref UserPreferencesUserPoolClient
+      WebApiEndpoint: !GetAtt WebApiApp.Outputs.ApiEndpoint
+      UserPreferencesApiEndpoint: !GetAtt UserPreferencesApp.Outputs.ApiEndpoint
+
   # Cognito User Pool and Client
   UserPreferencesUserPool:
     Type: AWS::Cognito::UserPool
@@ -154,6 +217,16 @@ Resources:
         WatchModeApiKeySecretArn: !Ref WatchModeApiKeySecret
         WatchModeHostname: !Ref WatchModeHostname
 
+  # Nested application for the Web API Lambda
+  WebApiApp:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: web-api.yaml
+      Parameters:
+        ProgramDataTableName: !Ref ProgrammesTable
+        ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
+        UserPoolArn: !GetAtt UserPreferencesUserPool.Arn
+
 Outputs:
   UserPoolId:
     Description: "The ID of the Cognito User Pool"
@@ -167,3 +240,15 @@ Outputs:
   ProgrammesTable:
     Description: "The name of the DynamoDB table for programmes"
     Value: !Ref ProgrammesTable
+  WebsiteBucket:
+    Description: "The S3 bucket hosting the website"
+    Value: !Ref WebsiteBucket
+  WebsiteUrl:
+    Description: "The URL of the hosted website"
+    Value: !GetAtt WebsiteBucket.WebsiteURL
+  WebApiEndpoint:
+    Description: "The Web API endpoint URL"
+    Value: !GetAtt WebApiApp.Outputs.ApiEndpoint
+  UserPreferencesApiEndpoint:
+    Description: "The User Preferences API endpoint URL"
+    Value: !GetAtt UserPreferencesApp.Outputs.ApiEndpoint

@@ -1,0 +1,129 @@
+# /resources/web-api.yaml
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: "Web API Lambda for serving data to the SPA"
+
+Parameters:
+  ProgramDataTableName:
+    Type: String
+  ProgramDataTableArn:
+    Type: String
+  UserPoolArn:
+    Type: String
+
+Resources:
+  # The API Gateway for the Web API
+  WebApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Auth:
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !Ref UserPoolArn
+      DefinitionBody:
+        openapi: "3.0.1"
+        info:
+          title: "UK TV Guide Web API"
+          version: "1.0"
+        paths:
+          /titles:
+            get:
+              summary: "Get titles based on user preferences"
+              security:
+                - CognitoAuthorizer: []
+              x-amazon-apigateway-integration:
+                type: "aws_proxy"
+                httpMethod: "POST"
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebApiFunction.Arn}/invocations"
+              responses:
+                "200":
+                  description: "A list of titles matching user preferences"
+                  content:
+                    application/json:
+                      schema:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Title"
+          /recommendations:
+            get:
+              summary: "Get new recommendations for the user (rating > 7, added within last week)"
+              security:
+                - CognitoAuthorizer: []
+              x-amazon-apigateway-integration:
+                type: "aws_proxy"
+                httpMethod: "POST"
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebApiFunction.Arn}/invocations"
+              responses:
+                "200":
+                  description: "A list of new recommendations"
+                  content:
+                    application/json:
+                      schema:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Title"
+        components:
+          securitySchemes:
+            CognitoAuthorizer:
+              type: apiKey
+              name: Authorization
+              in: header
+              x-amazon-apigateway-authtype: cognito_user_pools
+          schemas:
+            Title:
+              type: object
+              properties:
+                id:
+                  type: string
+                title:
+                  type: string
+                plot_overview:
+                  type: string
+                poster:
+                  type: string
+                user_rating:
+                  type: number
+                source_ids:
+                  type: array
+                  items:
+                    type: string
+                genre_ids:
+                  type: array
+                  items:
+                    type: string
+
+  # The Lambda function that backs the Web API
+  WebApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: web_api.lambda_handler
+      Runtime: python3.12
+      CodeUri: ../../src/web_api/
+      MemorySize: 256
+      Timeout: 30
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:Scan
+              Resource: !Ref ProgramDataTableArn
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref ProgramDataTableName
+          AWS_ENDPOINT_URL: "" # for testing
+
+Outputs:
+  ApiEndpoint:
+    Description: "Web API Gateway endpoint URL for the Prod stage"
+    Value: !Sub "https://${WebApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+  WebApiFunctionName:
+    Description: "Name of the Web API Lambda function"
+    Value: !Ref WebApiFunction
+  WebApiFunctionArn:
+    Description: "ARN of the Web API Lambda function"
+    Value: !GetAtt WebApiFunction.Arn

@@ -800,7 +800,50 @@ Waiting for 90 seconds for data to flow through Kinesis, be consumed, and enrich
 
 ## Step 14 - add the EventBridge triggers
 
-## Step 15 - schedule the API calls to get the shows and make it efficient
+With everything working I want to define the EventBridge trigger to:
+
+- perform a daily call to `PeriodicReferenceFunction` with `refresh_sources` and `refresh_genres` set to `Y`
+- perform a `UserPrefsTitleIngestionFunction` daily call
+
+These were actually in place already in the CloudFormation:
+
+```yaml
+      Events:
+        ScheduledTrigger:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day) # Example: runs once a day
+            Name: DailyUKTVReferenceTrigger
+            Enabled: true
+            # Input to refresh both sources and genres daily for the GB region
+            Input: '{"refresh_sources": "Y", "refresh_genres": "Y", "regions": "GB"}'
+
+...
+
+      Events:
+        Stream:
+          Type: DynamoDB
+          Properties:
+            Stream: !Ref ProgrammesTableStreamArn
+            BatchSize: 10
+            StartingPosition: LATEST
+```
+
+So no further action required.
+
+## Step 15 - single page web application hosted on S3
+
+The next step is to host a single page web application that looks at the DynamoDB table and provides the following 
+capabilities:
+
+1. User Authentication
+2. Ability to update user preferences
+3. Ability to review all of the available titles that fall within your user preferences
+4. Ability to review only the new recommendations for your user (user_rating > 7) and added within the last week
+
+The view for 3. and 4. should be a tile with an image which you can click on to get full details. 
+
+## Step 16 - schedule the API calls to get the shows and make it efficient
 
 #TODO: validate the content below from Gemini
 
