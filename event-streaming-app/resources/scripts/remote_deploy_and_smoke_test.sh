@@ -115,7 +115,8 @@ echo "🔍 Scanning DynamoDB for enriched title records..."
 # An enriched title will have the 'plot_overview' attribute.
 ITEM_COUNT=$(aws dynamodb scan \
   --table-name "$TABLE_NAME" \
-  --filter-expression "attribute_exists(plot_overview)" \
+  --filter-expression "attribute_exists(#data.plot_overview)" \
+  --expression-attribute-names '{"#data": "data"}' \
   --select "COUNT" \
   --profile "$PROFILE" \
   --region "$REGION" | jq .Count)
@@ -131,11 +132,43 @@ fi
 ########################################################################################################################
 echo "⏳ Step 8: Dump data from DynamoDB..."
 ########################################################################################################################
-# Extract the rows in the DynamoDB table as an array of JSON objects and store in a file
+# There are 4 types of data we shall extract into 4 different files
+# - genres
+# - sources
+# - titles
+# - user preferences
+
+echo "Extracting the genres:"
 aws dynamodb scan \
   --table-name "$TABLE_NAME" \
-  --profile "$PROFILE" \
-> export.json
+  --filter-expression "begins_with(PK, :prefix)" \
+  --expression-attribute-values '{":prefix":{"S":"genre:"}}' \
+  --output json \
+  --profile "$PROFILE" --region "$REGION" | jq '.' > genres.json
+
+echo "Extracting the sources:"
+aws dynamodb scan \
+  --table-name "$TABLE_NAME" \
+  --filter-expression "begins_with(PK, :prefix)" \
+  --expression-attribute-values '{":prefix":{"S":"source:"}}' \
+  --output json \
+  --profile "$PROFILE" --region "$REGION" | jq '.' > sources.json
+
+echo "Extracting the titles:"
+aws dynamodb scan \
+  --table-name "$TABLE_NAME" \
+  --filter-expression "begins_with(PK, :prefix)" \
+  --expression-attribute-values '{":prefix":{"S":"title:"}}' \
+  --output json \
+  --profile "$PROFILE" --region "$REGION" | jq '.' > titles.json
+
+echo "Extracting the userprefs:"
+aws dynamodb scan \
+  --table-name "$TABLE_NAME" \
+  --filter-expression "begins_with(PK, :prefix)" \
+  --expression-attribute-values '{":prefix":{"S":"userpref:"}}' \
+  --output json \
+  --profile "$PROFILE" --region "$REGION" | jq '.' > userprefs.json
 
 
 ########################################################################################################################

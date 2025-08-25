@@ -749,6 +749,55 @@ steps are:
 
 This should all be automated in a file [remote_deploy_and_smoke_test.sh](../scripts/remote_deploy_and_smoke_test.sh)
 
+When I ran this I did run into a few issues with the requirements.tx files not being honoured. I think this was because of
+the defaults in [samconfig.toml](../../samconfig.toml)
+
+I ended up using:
+
+```toml
+# sam deploy command
+[default.deploy.parameters]
+stack_name = "uktv-event-streaming-app"
+resolve_s3 = true
+s3_prefix = "uktv-event-streaming-app"
+region = "eu-west-2"
+profile = "streaming"
+#confirm_changeset = true
+#capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
+#parameter_overrides = "WatchModeApiKey=\"REDACTED\""
+#image_repositories = []
+#template_file = "resources/cloudformation/uktv-event-streaming-app.yaml"
+```
+
+and the build & deploy commands:
+
+```bash
+sam build --use-container
+
+sam deploy \
+    --stack-name "$STACK_NAME" \
+    --profile "$PROFILE" \
+    --region "$REGION" \
+    --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+     --parameter-overrides "CreateDataStream=true" "WatchModeApiKey=${WATCHMODE_API_KEY}"
+```
+
+This worked by gives this error in step 7 to investigate:
+
+```output
+❌ Failure! No enriched items found in DynamoDB.
+```
+
+This seems to be because of the way I was querying the data in my validation step which I corrected and was greeted with
+a success:
+
+```output
+⏳ Step 7: Verifying data in DynamoDB...
+Waiting for 90 seconds for data to flow through Kinesis, be consumed, and enriched...
+🔍 Scanning DynamoDB for enriched title records...
+✅ Success! Found 20 enriched items in DynamoDB.
+```
+
 ## Step 14 - add the EventBridge triggers
 
 ## Step 15 - schedule the API calls to get the shows and make it efficient
