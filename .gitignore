@@ -1,4 +1,5 @@
-/.idea/
+.idea
+bin
 .aws-sam
 build
 .gradle
