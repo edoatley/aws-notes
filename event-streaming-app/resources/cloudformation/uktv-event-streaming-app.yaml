@@ -94,7 +94,7 @@ Resources:
     Properties:
       Handler: website_deployment.lambda_handler
       Runtime: python3.12
-      CodeUri: ../../src/website_deployment/
+      CodeUri: ../../src/deployment_helpers/
       MemorySize: 256
       Timeout: 300
       Policies:

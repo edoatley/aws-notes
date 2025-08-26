@@ -65,8 +65,8 @@ Resources:
             Schedule: rate(1 day) # Example: runs once a day
             Name: DailyUKTVReferenceTrigger
             Enabled: true
-            # Input to refresh both sources and genres daily for the GB region
-            Input: '{"refresh_sources": "Y", "refresh_genres": "Y", "regions": "GB"}'
+            # Input to pass the refresh_sources and regions parameters
+            Input: '{"refresh_sources": "Y", "regions": "GB"}'
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref ProgramDataTableName
