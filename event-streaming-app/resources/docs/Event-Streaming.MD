@@ -3,30 +3,32 @@
 ## Table of contents
 
 <!-- TOC -->
-* [Event Streaming app](#event-streaming-app)
-  * [Table of contents](#table-of-contents)
-  * [Rough plan](#rough-plan)
-  * [Target Architecture diagram](#target-architecture-diagram)
-  * [Step 1 - Initial set up](#step-1---initial-set-up)
-  * [Step 2 - Shared infrastructure set up](#step-2---shared-infrastructure-set-up)
-  * [Step 3 - Periodic Ingestion Lambda (basic deployment)](#step-3---periodic-ingestion-lambda-basic-deployment)
-  * [Step 4 - WatchMode initial integration](#step-4---watchmode-initial-integration)
-    * [Sources](#sources)
-    * [Genres](#genres)
-  * [Step 5 - SAM Project cleanup](#step-5---sam-project-cleanup)
-  * [Step 6 - Preferences API](#step-6---preferences-api)
-  * [Step 7 - Call API to get some shows for all known genres and source](#step-7---call-api-to-get-some-shows-for-all-known-genres-and-source)
-  * [Step 9 - read title data published to kinesis](#step-9---read-title-data-published-to-kinesis)
-  * [Step 10 - publish title data to kinesis](#step-10---publish-title-data-to-kinesis)
-    * [LocalStack setup](#localstack-setup)
-    * [LocalStack setup](#localstack-setup-1)
-    * [Specialist Test Script for Title Ingestion](#specialist-test-script-for-title-ingestion)
-  * [Step 11 - store title data to DynamoDB](#step-11---store-title-data-to-dynamodb)
-  * [Step 12 - enrich the stored title data in DynamoDB](#step-12---enrich-the-stored-title-data-in-dynamodb)
-  * [Step 13 - deploy to AWS and run an E2E test (taking cost safeguards)](#step-13---deploy-to-aws-and-run-an-e2e-test-taking-cost-safeguards)
-  * [Step 14 - add the EventBridge triggers](#step-14---add-the-eventbridge-triggers)
-  * [Step 15 - schedule the API calls to get the shows and make it efficient](#step-15---schedule-the-api-calls-to-get-the-shows-and-make-it-efficient)
-  * [Cleanup](#cleanup)
+- [Event Streaming app](#event-streaming-app)
+  - [Table of contents](#table-of-contents)
+  - [Rough plan](#rough-plan)
+  - [Target Architecture diagram](#target-architecture-diagram)
+  - [Step 1 - Initial set up](#step-1---initial-set-up)
+  - [Step 2 - Shared infrastructure set up](#step-2---shared-infrastructure-set-up)
+  - [Step 3 - Periodic Ingestion Lambda (basic deployment)](#step-3---periodic-ingestion-lambda-basic-deployment)
+  - [Step 4 - WatchMode initial integration](#step-4---watchmode-initial-integration)
+    - [Sources](#sources)
+    - [Genres](#genres)
+  - [Step 5 - SAM Project cleanup](#step-5---sam-project-cleanup)
+  - [Step 6 - Preferences API](#step-6---preferences-api)
+  - [Step 7 - Call API to get some shows for all known genres and source](#step-7---call-api-to-get-some-shows-for-all-known-genres-and-source)
+  - [Step 9 - read title data published to kinesis](#step-9---read-title-data-published-to-kinesis)
+  - [Step 10 - publish title data to kinesis](#step-10---publish-title-data-to-kinesis)
+    - [LocalStack setup](#localstack-setup)
+    - [LocalStack setup](#localstack-setup-1)
+    - [Specialist Test Script for Title Ingestion](#specialist-test-script-for-title-ingestion)
+  - [Step 11 - store title data to DynamoDB](#step-11---store-title-data-to-dynamodb)
+  - [Step 12 - enrich the stored title data in DynamoDB](#step-12---enrich-the-stored-title-data-in-dynamodb)
+  - [Step 13 - deploy to AWS and run an E2E test (taking cost safeguards)](#step-13---deploy-to-aws-and-run-an-e2e-test-taking-cost-safeguards)
+  - [Step 14 - add the EventBridge triggers](#step-14---add-the-eventbridge-triggers)
+  - [Step 15 - single page web application hosted on S3](#step-15---single-page-web-application-hosted-on-s3)
+    - [Deployment approach](#deployment-approach)
+  - [Step 16 - schedule the API calls to get the shows and make it efficient](#step-16---schedule-the-api-calls-to-get-the-shows-and-make-it-efficient)
+  - [Cleanup](#cleanup)
 <!-- TOC -->
 
 ## Rough plan
@@ -842,6 +844,22 @@ capabilities:
 4. Ability to review only the new recommendations for your user (user_rating > 7) and added within the last week
 
 The view for 3. and 4. should be a tile with an image which you can click on to get full details. 
+
+### Deployment approach
+
+We needed to have a CloudFormation, S3 and Lambda stack to  deploy the web frontend single-page application.
+
+Here is a summary of the process:
+
+1.  **CloudFormation Initiates Deployment**: When you deploy the SAM/CloudFormation stack defined in [`uktv-event-streaming-app.yaml`](event-streaming-app/resources/cloudformation/uktv-event-streaming-app.yaml:1), it creates all the necessary AWS resources. One of these resources is the `Custom::WebsiteDeployment`.
+
+2.  **Custom Resource Invokes Lambda**: CloudFormation doesn't know how to deploy a website from local files into an S3 bucket by itself. To solve this, it invokes the helper Lambda function specified in the `ServiceToken`. In this case, it's the `WebsiteDeploymentFunction`, the properties defined under `WebsiteDeployment` (like `BucketName`, `UserPoolId`, API endpoints, etc. are passed as parameters to this Lambda function.
+
+3.  **Lambda Function Executes Deployment Logic**: The `WebsiteDeploymentFunction` (whose code is in [`website_deployment.py`](../../src/deployment_helpers/website_deployment.py)) contains the logic to handle the deployment. When invoked by CloudFormation (with a `RequestType` of `Create` or `Update`), it performs two main tasks:
+    *   **Generates `config.js`**: It uses the parameters passed from CloudFormation (e.g., `UserPoolId`, `WebApiEndpoint`) to create a dynamic `config.js` file. This file provides the frontend application with the specific details of the backend resources it needs to communicate with. This file is then uploaded to the root of the `WebsiteBucket`.
+    *   **Uploads Static Files**: The function reads the static files (`index.html`, `error.html`, `app.js`) from the `web` directory (uploaded as part od sam deploy) and copies them to the `WebsiteBucket`.
+
+4.  **S3 Bucket Hosts the Website**: The `WebsiteBucket` is configured for static website hosting. Once the Lambda function has uploaded all the files (`index.html`, `error.html`, `app.js`, and the generated `config.js`), the website becomes publicly accessible.
 
 ## Step 16 - schedule the API calls to get the shows and make it efficient
 
