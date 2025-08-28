@@ -26,8 +26,9 @@
   - [Step 13 - deploy to AWS and run an E2E test (taking cost safeguards)](#step-13---deploy-to-aws-and-run-an-e2e-test-taking-cost-safeguards)
   - [Step 14 - add the EventBridge triggers](#step-14---add-the-eventbridge-triggers)
   - [Step 15 - single page web application hosted on S3](#step-15---single-page-web-application-hosted-on-s3)
-    - [Deployment approach](#deployment-approach)
-  - [Step 16 - schedule the API calls to get the shows and make it efficient](#step-16---schedule-the-api-calls-to-get-the-shows-and-make-it-efficient)
+    - [Testing approach](#testing-approach)
+  - [Step 16 - incorporate teh S3 file sync into the cloudformation stack](#step-16---incorporate-teh-s3-file-sync-into-the-cloudformation-stack)
+  - [Step 17 - schedule the API calls to get the shows and make it efficient](#step-17---schedule-the-api-calls-to-get-the-shows-and-make-it-efficient)
   - [Cleanup](#cleanup)
 <!-- TOC -->
 
@@ -845,23 +846,19 @@ capabilities:
 
 The view for 3. and 4. should be a tile with an image which you can click on to get full details. 
 
-### Deployment approach
+### Testing approach
 
-We needed to have a CloudFormation, S3 and Lambda stack to  deploy the web frontend single-page application.
+The next step is to deploy the website to see how it looks. To do this I created the script [remote_deploy.sh](event-streaming-app/resources/scripts/remote_deploy.sh)
 
-Here is a summary of the process:
+For now I have just added an s3 sync at the end and not created a CloudFront distribution so we may need to revisit that but it works to sync the files to S3 a capability. 
+I ran into issues with the revcommended approach of having a custom lambda handler so will look at that after.
 
-1.  **CloudFormation Initiates Deployment**: When you deploy the SAM/CloudFormation stack defined in [`uktv-event-streaming-app.yaml`](event-streaming-app/resources/cloudformation/uktv-event-streaming-app.yaml:1), it creates all the necessary AWS resources. One of these resources is the `Custom::WebsiteDeployment`.
 
-2.  **Custom Resource Invokes Lambda**: CloudFormation doesn't know how to deploy a website from local files into an S3 bucket by itself. To solve this, it invokes the helper Lambda function specified in the `ServiceToken`. In this case, it's the `WebsiteDeploymentFunction`, the properties defined under `WebsiteDeployment` (like `BucketName`, `UserPoolId`, API endpoints, etc. are passed as parameters to this Lambda function.
 
-3.  **Lambda Function Executes Deployment Logic**: The `WebsiteDeploymentFunction` (whose code is in [`website_deployment.py`](../../src/deployment_helpers/website_deployment.py)) contains the logic to handle the deployment. When invoked by CloudFormation (with a `RequestType` of `Create` or `Update`), it performs two main tasks:
-    *   **Generates `config.js`**: It uses the parameters passed from CloudFormation (e.g., `UserPoolId`, `WebApiEndpoint`) to create a dynamic `config.js` file. This file provides the frontend application with the specific details of the backend resources it needs to communicate with. This file is then uploaded to the root of the `WebsiteBucket`.
-    *   **Uploads Static Files**: The function reads the static files (`index.html`, `error.html`, `app.js`) from the `web` directory (uploaded as part od sam deploy) and copies them to the `WebsiteBucket`.
+## Step 16 - incorporate teh S3 file sync into the cloudformation stack
 
-4.  **S3 Bucket Hosts the Website**: The `WebsiteBucket` is configured for static website hosting. Once the Lambda function has uploaded all the files (`index.html`, `error.html`, `app.js`, and the generated `config.js`), the website becomes publicly accessible.
 
-## Step 16 - schedule the API calls to get the shows and make it efficient
+## Step 17 - schedule the API calls to get the shows and make it efficient
 
 #TODO: validate the content below from Gemini
 

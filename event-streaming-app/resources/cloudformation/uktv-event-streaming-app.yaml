@@ -1,4 +1,3 @@
-# root-template.yaml
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Root SAM application for the Event Streaming App.
@@ -86,45 +85,7 @@ Resources:
           - Effect: Allow
             Principal: "*"
             Action: s3:GetObject
-            Resource: !Sub "${WebsiteBucket}/*"
-
-  # Website Deployment Lambda Function
-  WebsiteDeploymentFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: website_deployment.lambda_handler
-      Runtime: python3.12
-      CodeUri: ../../src/deployment_helpers/
-      MemorySize: 256
-      Timeout: 300
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action:
-                - s3:PutObject
-                - s3:PutObjectAcl
-                - s3:PutObjectTagging
-              Resource: !Sub "${WebsiteBucket}/*"
-      Environment:
-        Variables:
-          WEBSITE_BUCKET: !Ref WebsiteBucket
-      Events:
-        WebsiteDeployment:
-          Type: CloudFormation
-          Properties:
-            Target: WebsiteDeployment
-
-  # Custom Resource for Website Deployment
-  WebsiteDeployment:
-    Type: Custom::WebsiteDeployment
-    Properties:
-      ServiceToken: !GetAtt WebsiteDeploymentFunction.Arn
-      BucketName: !Ref WebsiteBucket
-      Region: !Ref AWS::Region
-      UserPoolId: !Ref UserPreferencesUserPool
-      UserPoolClientId: !Ref UserPreferencesUserPoolClient
-      WebApiEndpoint: !GetAtt WebApiApp.Outputs.ApiEndpoint
-      UserPreferencesApiEndpoint: !GetAtt UserPreferencesApp.Outputs.ApiEndpoint
+            Resource: !Sub "${WebsiteBucket.Arn}/*"
 
   # Cognito User Pool and Client
   UserPreferencesUserPool:
