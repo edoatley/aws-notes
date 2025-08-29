@@ -9,7 +9,7 @@ Parameters:
     Default: UKTVProgrammes
   WatchModeApiKey:
     Type: String
-    NoEcho: true # Mark as NoEcho for sensitive parameters
+    NoEcho: true
     Description: "The API key for WatchMode API (will be stored in Secrets Manager)"
   WatchModeHostname:
     Type: String
@@ -21,7 +21,7 @@ Parameters:
     Default: "test.user@example.com"
   CreateDataStream:
     Type: String
-    Description: "Set to 'true' to create the Kinesis Data Stream. False if saving money and don't want to yet!"
+    Description: "Set to 'true' to create the Kinesis Data Stream."
     Default: "false"
     AllowedValues: [ "true", "false" ]
 
@@ -33,24 +33,19 @@ Resources:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: !Sub "${AWS::StackName}/WatchModeApiKey"
-      Description: API key for WatchMode API used by PeriodicReferenceFunction
+      Description: API key for WatchMode API
       SecretString: !Ref WatchModeApiKey
 
-  # DynamoDB Table for TV Programmes
   ProgrammesTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Ref ProgrammesTableName
       AttributeDefinitions:
-        - AttributeName: "PK"
-          AttributeType: "S"
-        - AttributeName: "SK"
-          AttributeType: "S"
+        - { AttributeName: "PK", AttributeType: "S" }
+        - { AttributeName: "SK", AttributeType: "S" }
       KeySchema:
-        - AttributeName: "PK"
-          KeyType: "HASH"  # Partition key
-        - AttributeName: "SK"
-          KeyType: "RANGE" # Sort key
+        - { AttributeName: "PK", KeyType: "HASH" }
+        - { AttributeName: "SK", KeyType: "RANGE" }
       BillingMode: PAY_PER_REQUEST
       StreamSpecification:
         StreamViewType: NEW_IMAGE
@@ -62,19 +57,21 @@ Resources:
       StreamModeDetails:
         StreamMode: ON_DEMAND
 
-  # S3 Bucket for Website Hosting
   WebsiteBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "${AWS::StackName}-website-${AWS::AccountId}"
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
-      WebsiteConfiguration:
-        IndexDocument: index.html
-        ErrorDocument: error.html
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "OAI for ${AWS::StackName}"
 
   WebsiteBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -83,19 +80,41 @@ Resources:
       PolicyDocument:
         Statement:
           - Effect: Allow
-            Principal: "*"
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
             Action: s3:GetObject
-            Resource: !Sub "${WebsiteBucket.Arn}/*"
+            Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
 
-  # Cognito User Pool and Client
+  WebsiteDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "CloudFront distribution for ${AWS::StackName} website"
+        DefaultRootObject: index.html
+        Origins:
+          - Id: !Sub "S3-${WebsiteBucket}"
+            DomainName: !GetAtt WebsiteBucket.DomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOAI}"
+        DefaultCacheBehavior:
+          TargetOriginId: !Sub "S3-${WebsiteBucket}"
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: ["GET", "HEAD", "OPTIONS"]
+          CachedMethods: ["GET", "HEAD", "OPTIONS"]
+          ForwardedValues:
+            QueryString: false
+            Cookies: { Forward: none }
+          DefaultTTL: 86400
+          MaxTTL: 31536000
+          MinTTL: 0
+
   UserPreferencesUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub "${AWS::StackName}-UserPool"
-      UsernameAttributes:
-        - email
-      AutoVerifiedAttributes:
-        - email
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
       Policies:
         PasswordPolicy:
           MinimumLength: 8
@@ -109,7 +128,19 @@ Resources:
     Properties:
       ClientName: !Sub "${AWS::StackName}-AppClient"
       UserPoolId: !Ref UserPreferencesUserPool
-      GenerateSecret: false # Recommended for browser-based/mobile apps
+      GenerateSecret: false
+      SupportedIdentityProviders: [COGNITO]
+      CallbackURLs: [!Sub "https://${WebsiteDistribution.DomainName}/"]
+      LogoutURLs: [!Sub "https://${WebsiteDistribution.DomainName}/"]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [implicit, code]
+      AllowedOAuthScopes: [openid, email, profile]
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPreferencesUserPool
+      Domain: !Sub "${AWS::StackName}-user-pool-${AWS::AccountId}"
 
   TestUser:
     Type: AWS::Cognito::UserPoolUser
@@ -117,12 +148,10 @@ Resources:
       UserPoolId: !Ref UserPreferencesUserPool
       Username: !Ref TestUserName
       UserAttributes:
-        - Name: email
-          Value: !Ref TestUserName
-        - Name: email_verified
-          Value: "true"
+        - { Name: email, Value: !Ref TestUserName }
+        - { Name: email_verified, Value: "true" }
 
-  # Nested application for the User Preferences driven title ingestion
+  # ... (Nested Applications remain the same) ...
   UserPrefsTitleIngestionApp:
     Type: AWS::Serverless::Application
     Properties:
@@ -135,7 +164,6 @@ Resources:
         ProgrammeDataStreamName: !If [ShouldCreateDataStream, !Ref ProgrammeDataStream, ""]
         ProgrammeDataStreamArn: !If [ShouldCreateDataStream, !GetAtt ProgrammeDataStream.Arn, ""]
 
-  # Nested application for the Periodic Reference Data Lambda
   PeriodicReferenceApp:
     Type: AWS::Serverless::Application
     Properties:
@@ -146,7 +174,6 @@ Resources:
         WatchModeApiKeySecretArn: !Ref WatchModeApiKeySecret
         WatchModeHostname: !Ref WatchModeHostname
 
-  # Nested application for the User Preferences API Lambda
   UserPreferencesApp:
     Type: AWS::Serverless::Application
     Properties:
@@ -154,12 +181,11 @@ Resources:
       Parameters:
         ProgramDataTableName: !Ref ProgrammesTable
         ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
-        UserPoolArn: !GetAtt UserPreferencesUserPool.Arn # Pass the User Pool ARN to the nested app
+        UserPoolArn: !GetAtt UserPreferencesUserPool.Arn
 
-  # Nested application for the Kinesis Consumer Lambda
   TitleRecommendationsConsumerApp:
     Type: AWS::Serverless::Application
-    Condition: ShouldCreateDataStream # Only create if the stream exists
+    Condition: ShouldCreateDataStream
     Properties:
       Location: title-recommendations-consumer.yaml
       Parameters:
@@ -167,7 +193,6 @@ Resources:
         ProgramDataTableName: !Ref ProgrammesTable
         ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
 
-  # Nested application for the Title Enrichment Lambda
   TitleEnrichmentApp:
     Type: AWS::Serverless::Application
     Properties:
@@ -178,7 +203,6 @@ Resources:
         WatchModeApiKeySecretArn: !Ref WatchModeApiKeySecret
         WatchModeHostname: !Ref WatchModeHostname
 
-  # Nested application for the Web API Lambda
   WebApiApp:
     Type: AWS::Serverless::Application
     Properties:
@@ -195,6 +219,9 @@ Outputs:
   UserPoolClientId:
     Description: "The ID of the Cognito User Pool App Client"
     Value: !Ref UserPreferencesUserPoolClient
+  UserPoolDomain:
+    Description: "The domain of the Cognito User Pool"
+    Value: !Ref UserPoolDomain
   TestUsername:
     Description: "The username of the pre-created test user"
     Value: !Ref TestUserName
@@ -205,8 +232,8 @@ Outputs:
     Description: "The S3 bucket hosting the website"
     Value: !Ref WebsiteBucket
   WebsiteUrl:
-    Description: "The URL of the hosted website"
-    Value: !GetAtt WebsiteBucket.WebsiteURL
+    Description: "The URL of the hosted website (CloudFront)"
+    Value: !Sub "https://${WebsiteDistribution.DomainName}"
   WebApiEndpoint:
     Description: "The Web API endpoint URL"
     Value: !GetAtt WebApiApp.Outputs.ApiEndpoint

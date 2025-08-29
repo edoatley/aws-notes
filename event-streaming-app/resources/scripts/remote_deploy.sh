@@ -37,18 +37,18 @@ if [ "$STACK_STATUS" == "ROLLBACK_COMPLETE" ]; then
     echo "⏳ Waiting for stack to be deleted..."
     aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" --profile "$PROFILE" --region "$REGION"
     echo "✅ Stack deleted."
-elif [ "$STACK_STATUS" != "DOES_NOT_EXIST" ] && [ "$STACK_STATUS" != "CREATE_COMPLETE" ] && [ "$STACK_STATUS" != "UPDATE_COMPLETE" ]; then
+elif [ "$STACK_STATUS" != "DOES_NOT_EXIST" ] && [ "$STACK_STATUS" != "CREATE_COMPLETE" ] && [ "$STACK_STATUS" != "UPDATE_COMPLETE" ] && [ "$STACK_STATUS" != "UPDATE_ROLLBACK_COMPLETE" ]; then
     echo "⚠️ Stack is in an unrecoverable state ($STACK_STATUS). Please check the AWS console. Aborting."
     exit 1
 fi
 
 ########################################################################################################################
-echo "🚀 Step 2: Building the application with SAM..."
+echo "🚀 Step 3: Building the application with SAM..."
 ########################################################################################################################
 sam build --use-container
 
 ########################################################################################################################
-echo "🚀 Step 3: Deploying changes to the stack '$STACK_NAME'..."
+echo "🚀 Step 4: Deploying changes to the stack '$STACK_NAME'..."
 ########################################################################################################################
 sam deploy \
     --stack-name "$STACK_NAME" \
@@ -60,7 +60,7 @@ sam deploy \
 echo "✅ Deployment complete. Your changes are now live."
 
 ########################################################################################################################
-echo "🚀 Step 4: Setting password for the test user..."
+echo "🚀 Step 5: Setting password for the test user..."
 ########################################################################################################################
 # Fetch stack outputs needed to set the password
 USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
@@ -92,7 +92,30 @@ echo "Password:    $TEST_USER_PASSWORD"
 echo "--------------------------------------------------"
 
 ########################################################################################################################
-echo "↔ Step 5: sync contents of web folder to the bucket"
+echo "↔ Step 6: Creating config.js and syncing web content to S3"
 ########################################################################################################################
+# Fetch outputs for config.js
 WEBSITE_BUCKET=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebsiteBucket'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
-aws s3 sync --profile "$PROFILE" --region "$REGION" "event-streaming-app/src/web/" "s3://$WEBSITE_BUCKET" 
+USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+USER_POOL_DOMAIN=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolDomain'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+WEB_API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebApiEndpoint'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+
+# Create config.js in the web directory
+CONFIG_FILE="src/web/config.js"
+echo "📝 Creating config file at ${CONFIG_FILE}..."
+cat << EOF > "$CONFIG_FILE"
+window.config = {
+    userPoolId: "${USER_POOL_ID}",
+    userPoolClientId: "${USER_POOL_CLIENT_ID}",
+    userPoolDomain: "${USER_POOL_DOMAIN}.auth.${REGION}.amazoncognito.com",
+    apiEndpoint: "${WEB_API_ENDPOINT}",
+    preferencesApiEndpoint: "${WEB_API_ENDPOINT}"
+};
+EOF
+echo "✅ Config file created."
+
+# Sync the entire web directory to the S3 bucket
+echo "🔄 Syncing src/web/ to s3://${WEBSITE_BUCKET}..."
+aws s3 sync "src/web/" "s3://${WEBSITE_BUCKET}" --profile "${PROFILE}" --region "${REGION}" --delete
+echo "✅ Web content synced successfully."

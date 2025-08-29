@@ -46,6 +46,28 @@ def build_response(status_code, body):
         'body': json.dumps(body, default=str)
     }
 
+def get_all_sources():
+    """Get all sources. Placeholder returning hardcoded data."""
+    # In a real application, you would fetch this from DynamoDB
+    logger.info("Fetching all sources (placeholder data).")
+    return [
+        {"id": "203", "name": "Netflix"},
+        {"id": "372", "name": "Disney+"},
+        {"id": "387", "name": "Amazon Prime Video"}
+    ]
+
+def get_all_genres():
+    """Get all genres. Placeholder returning hardcoded data."""
+    # In a real application, you would fetch this from DynamoDB
+    logger.info("Fetching all genres (placeholder data).")
+    return [
+        {"id": "1", "name": "Action"},
+        {"id": "2", "name": "Adventure"},
+        {"id": "4", "name": "Comedy"},
+        {"id": "7", "name": "Drama"},
+        {"id": "8", "name": "Fantasy"}
+    ]
+
 def get_user_preferences(user_id):
     """Get user preferences from DynamoDB."""
     try:
@@ -69,6 +91,35 @@ def get_user_preferences(user_id):
     except ClientError as e:
         logger.error(f"DynamoDB error getting preferences for user {user_id}: {e}", exc_info=True)
         return None
+
+def update_user_preferences(user_id, preferences_data):
+    """Update user preferences in DynamoDB by deleting old and inserting new."""
+    try:
+        # First, query for existing preferences to delete them
+        existing_prefs = get_user_preferences(user_id)
+        if existing_prefs is None: # Error occurred in get_user_preferences
+            return False
+
+        with table.batch_writer() as batch:
+            # Delete old source preferences
+            for source_id in existing_prefs.get('sources', []):
+                batch.delete_item(Key={'PK': f'{USER_PREF_PREFIX}{user_id}', 'SK': f'{SOURCE_PREFIX}{source_id}'})
+            # Delete old genre preferences
+            for genre_id in existing_prefs.get('genres', []):
+                batch.delete_item(Key={'PK': f'{USER_PREF_PREFIX}{user_id}', 'SK': f'{GENRE_PREFIX}{genre_id}'})
+
+            # Add new source preferences
+            for source_id in preferences_data.get('sources', []):
+                batch.put_item(Item={'PK': f'{USER_PREF_PREFIX}{user_id}', 'SK': f'{SOURCE_PREFIX}{source_id}'})
+            # Add new genre preferences
+            for genre_id in preferences_data.get('genres', []):
+                batch.put_item(Item={'PK': f'{USER_PREF_PREFIX}{user_id}', 'SK': f'{GENRE_PREFIX}{genre_id}'})
+        
+        logger.info(f"Successfully updated preferences for user {user_id}")
+        return True
+    except ClientError as e:
+        logger.error(f"DynamoDB error updating preferences for user {user_id}: {e}", exc_info=True)
+        return False
 
 def get_titles_by_preferences(user_id):
     """Get titles that match the user's preferences."""
@@ -123,13 +174,9 @@ def get_recommendations(user_id):
         if not preferences:
             return []
         
-        # Calculate date threshold (1 week ago)
-        week_ago = datetime.now() - timedelta(days=7)
-        
         titles = []
         processed_titles = set()
         
-        # For each source-genre combination the user prefers, get titles
         for source_id in preferences.get('sources', []):
             for genre_id in preferences.get('genres', []):
                 index_pk = f"source:{source_id}:genre:{genre_id}"
@@ -142,7 +189,6 @@ def get_recommendations(user_id):
                 for item in response.get('Items', []):
                     title_id = item.get('SK', '').split(':', 1)[1]
                     if title_id not in processed_titles:
-                        # Get the full title record
                         title_response = table.get_item(
                             Key={'PK': f"{TITLE_PREFIX}{title_id}", 'SK': 'record'}
                         )
@@ -151,7 +197,6 @@ def get_recommendations(user_id):
                             title_data = title_response['Item'].get('data', {})
                             user_rating = title_data.get('user_rating', 0)
                             
-                            # Check if rating > 7
                             if user_rating and float(user_rating) > 7:
                                 titles.append({
                                     'id': title_id,
@@ -176,10 +221,18 @@ def lambda_handler(event, context):
     http_method = event.get('httpMethod')
     path = event.get('path')
     
-    # Handle preflight OPTIONS request
+    # Handle preflight OPTIONS request for CORS
     if http_method == 'OPTIONS':
         return build_response(200, {})
     
+    # --- Public endpoints (no authentication required) ---
+    if http_method == 'GET':
+        if path == '/sources':
+            return build_response(200, get_all_sources())
+        if path == '/genres':
+            return build_response(200, get_all_genres())
+
+    # --- Protected endpoints (authentication required) ---
     try:
         user_id = event.get('requestContext', {}).get('authorizer', {}).get('claims', {}).get('sub')
         if not user_id:
@@ -191,12 +244,21 @@ def lambda_handler(event, context):
 
     if http_method == 'GET':
         if path == '/titles':
-            titles = get_titles_by_preferences(user_id)
-            return build_response(200, titles)
-        elif path == '/recommendations':
-            recommendations = get_recommendations(user_id)
-            return build_response(200, recommendations)
-        else:
-            return build_response(404, {"error": f"Path not found: {path}"})
-    
-    return build_response(405, {"error": f"Method not allowed: {http_method}"})
+            return build_response(200, get_titles_by_preferences(user_id))
+        if path == '/recommendations':
+            return build_response(200, get_recommendations(user_id))
+        if path == '/preferences':
+            return build_response(200, get_user_preferences(user_id))
+
+    if http_method == 'PUT':
+        if path == '/preferences':
+            try:
+                body = json.loads(event.get('body', '{}'))
+                if update_user_preferences(user_id, body):
+                    return build_response(200, {"message": "Preferences updated successfully"})
+                else:
+                    return build_response(500, {"error": "Failed to update preferences"})
+            except json.JSONDecodeError:
+                return build_response(400, {"error": "Invalid JSON in request body"})
+
+    return build_response(404, {"error": f"Path not found or method not allowed: {http_method} {path}"})

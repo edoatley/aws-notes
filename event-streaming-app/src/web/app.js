@@ -1,6 +1,5 @@
 // Global variables
 let currentUser = null;
-let userPool = null;
 let userSession = null;
 let sources = [];
 let genres = [];
@@ -8,16 +7,19 @@ let genres = [];
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
-    setupEventListeners();
 });
 
-function initializeApp() {
-    // Check if user is already authenticated
-    checkAuthStatus();
-    
-    // Load available sources and genres
-    loadSources();
-    loadGenres();
+async function initializeApp() {
+    // Handle the authentication callback if present
+    if (window.location.hash.includes('id_token')) {
+        await handleAuthCallback();
+    }
+
+    // Check the user's authentication status
+    await checkAuthStatus();
+
+    // Set up event listeners after checking auth status
+    setupEventListeners();
 }
 
 function setupEventListeners() {
@@ -30,21 +32,60 @@ function setupEventListeners() {
     document.getElementById('recommendations-tab').addEventListener('click', () => loadRecommendations());
 }
 
-function showLogin() {
-    document.getElementById('authSection').style.display = 'block';
-    document.getElementById('mainContent').style.display = 'none';
+function getCognitoAuth() {
+    if (!config.userPoolDomain) {
+        console.error("Cognito domain not configured!");
+        return null;
+    }
+    // This constructor comes from the amazon-cognito-auth-js library
+    return new AmazonCognitoIdentity.CognitoAuth({
+        UserPoolId: config.userPoolId,
+        ClientId: config.userPoolClientId,
+        RedirectUriSignIn: window.location.origin,
+        RedirectUriSignOut: window.location.origin,
+        TokenScopesArray: ['openid', 'email', 'profile'],
+        Domain: config.userPoolDomain
+    });
 }
 
-function checkAuthStatus() {
-    // Check if user is already authenticated
-    const session = getCurrentSession();
-    if (session && session.isValid()) {
-        userSession = session;
-        currentUser = session.username;
-        onUserAuthenticated();
-    } else {
-        showLogin();
+function showLogin() {
+    const auth = getCognitoAuth();
+    if (auth) {
+        auth.getSession();
     }
+}
+
+async function checkAuthStatus() {
+    const auth = getCognitoAuth();
+    if (!auth) return;
+
+    return new Promise((resolve) => {
+        auth.parseCognitoWebResponse(window.location.href);
+        userSession = auth.getSignInUserSession();
+
+        if (userSession && userSession.isValid()) {
+            currentUser = userSession.getIdToken().payload;
+            onUserAuthenticated();
+        } else {
+            onUserLoggedOut();
+        }
+        resolve();
+    });
+}
+
+function handleAuthCallback() {
+    return new Promise((resolve) => {
+        const auth = getCognitoAuth();
+        if (auth) {
+            auth.parseCognitoWebResponse(window.location.href);
+            userSession = auth.getSignInUserSession();
+            if (userSession && userSession.isValid()) {
+                // Clear the hash from the URL
+                window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+            }
+        }
+        resolve();
+    });
 }
 
 function onUserAuthenticated() {
@@ -53,58 +94,58 @@ function onUserAuthenticated() {
     document.getElementById('loginBtn').style.display = 'none';
     document.getElementById('logoutBtn').style.display = 'block';
     
-    // Load user preferences
+    // Load initial data
+    loadSources();
+    loadGenres();
     loadUserPreferences();
-    
-    // Load initial content
     loadTitles();
 }
 
-function logout() {
-    if (userSession) {
-        userSession.signOut();
-    }
-    currentUser = null;
-    userSession = null;
-    
+function onUserLoggedOut() {
     document.getElementById('mainContent').style.display = 'none';
+    document.getElementById('authSection').style.display = 'block';
     document.getElementById('loginBtn').style.display = 'block';
     document.getElementById('logoutBtn').style.display = 'none';
-    showLogin();
 }
 
-// Cognito authentication functions
-function getCurrentSession() {
-    if (!userPool) {
-        userPool = new AmazonCognitoIdentity.CognitoUserPool({
-            UserPoolId: config.userPoolId,
-            ClientId: config.userPoolClientId
-        });
+function logout() {
+    const auth = getCognitoAuth();
+    if (auth) {
+        auth.signOut();
     }
-    
-    const cognitoUser = userPool.getCurrentUser();
-    if (cognitoUser) {
-        return new Promise((resolve, reject) => {
-            cognitoUser.getSession((err, session) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(session);
-                }
-            });
-        });
-    }
-    return null;
 }
 
 // API functions
+async function makeApiRequest(path, method = 'GET', body = null) {
+    try {
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        if (userSession) {
+            const token = userSession.getIdToken().getJwtToken();
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const options = { method, headers };
+        if (body) {
+            options.body = JSON.stringify(body);
+        }
+
+        const response = await fetch(`${config.apiEndpoint}${path}`, options);
+        if (!response.ok) {
+            throw new Error(`API request failed with status ${response.status}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error(`Error in API request to ${path}:`, error);
+        throw error;
+    }
+}
+
 async function loadSources() {
     try {
-        const response = await fetch(`${config.preferencesApiEndpoint}/sources`);
-        if (response.ok) {
-            sources = await response.json();
-            renderSourcesList();
-        }
+        sources = await makeApiRequest('/sources');
+        renderSourcesList();
     } catch (error) {
         console.error('Error loading sources:', error);
     }
@@ -112,11 +153,8 @@ async function loadSources() {
 
 async function loadGenres() {
     try {
-        const response = await fetch(`${config.preferencesApiEndpoint}/genres`);
-        if (response.ok) {
-            genres = await response.json();
-            renderGenresList();
-        }
+        genres = await makeApiRequest('/genres');
+        renderGenresList();
     } catch (error) {
         console.error('Error loading genres:', error);
     }
@@ -124,17 +162,8 @@ async function loadGenres() {
 
 async function loadUserPreferences() {
     try {
-        const token = userSession.getIdToken().getJwtToken();
-        const response = await fetch(`${config.preferencesApiEndpoint}/preferences`, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        
-        if (response.ok) {
-            const preferences = await response.json();
-            updatePreferencesUI(preferences);
-        }
+        const preferences = await makeApiRequest('/preferences');
+        updatePreferencesUI(preferences);
     } catch (error) {
         console.error('Error loading user preferences:', error);
     }
@@ -145,27 +174,12 @@ async function updatePreferences() {
     const selectedGenres = Array.from(document.querySelectorAll('input[name="genre"]:checked')).map(cb => cb.value);
     
     try {
-        const token = userSession.getIdToken().getJwtToken();
-        const response = await fetch(`${config.preferencesApiEndpoint}/preferences`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-                sources: selectedSources,
-                genres: selectedGenres
-            })
-        });
-        
-        if (response.ok) {
-            // Reload titles and recommendations
-            loadTitles();
-            loadRecommendations();
-            alert('Preferences updated successfully!');
-        }
+        await makeApiRequest('/preferences', 'PUT', { sources: selectedSources, genres: selectedGenres });
+        alert('Preferences updated successfully!');
+        // Reload titles and recommendations to reflect changes
+        loadTitles();
+        loadRecommendations();
     } catch (error) {
-        console.error('Error updating preferences:', error);
         alert('Error updating preferences');
     }
 }
@@ -173,17 +187,8 @@ async function updatePreferences() {
 async function loadTitles() {
     try {
         showLoading('titlesLoading');
-        const token = userSession.getIdToken().getJwtToken();
-        const response = await fetch(`${config.apiEndpoint}/titles`, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        
-        if (response.ok) {
-            const titles = await response.json();
-            renderTitles(titles, 'titlesContainer');
-        }
+        const titles = await makeApiRequest('/titles');
+        renderTitles(titles, 'titlesContainer');
     } catch (error) {
         console.error('Error loading titles:', error);
     } finally {
@@ -194,17 +199,8 @@ async function loadTitles() {
 async function loadRecommendations() {
     try {
         showLoading('recommendationsLoading');
-        const token = userSession.getIdToken().getJwtToken();
-        const response = await fetch(`${config.apiEndpoint}/recommendations`, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        
-        if (response.ok) {
-            const recommendations = await response.json();
-            renderTitles(recommendations, 'recommendationsContainer');
-        }
+        const recommendations = await makeApiRequest('/recommendations');
+        renderTitles(recommendations, 'recommendationsContainer');
     } catch (error) {
         console.error('Error loading recommendations:', error);
     } finally {
@@ -238,30 +234,34 @@ function renderGenresList() {
 }
 
 function updatePreferencesUI(preferences) {
+    if (!preferences) return;
     // Check sources
-    preferences.sources.forEach(sourceId => {
-        const checkbox = document.getElementById(`source_${sourceId}`);
-        if (checkbox) checkbox.checked = true;
-    });
-    
+    if (preferences.sources) {
+        preferences.sources.forEach(sourceId => {
+            const checkbox = document.getElementById(`source_${sourceId}`);
+            if (checkbox) checkbox.checked = true;
+        });
+    }
     // Check genres
-    preferences.genres.forEach(genreId => {
-        const checkbox = document.getElementById(`genre_${genreId}`);
-        if (checkbox) checkbox.checked = true;
-    });
+    if (preferences.genres) {
+        preferences.genres.forEach(genreId => {
+            const checkbox = document.getElementById(`genre_${genreId}`);
+            if (checkbox) checkbox.checked = true;
+        });
+    }
 }
 
 function renderTitles(titles, containerId) {
     const container = document.getElementById(containerId);
     
-    if (titles.length === 0) {
+    if (!titles || titles.length === 0) {
         container.innerHTML = '<div class="col-12"><p class="text-muted">No titles found.</p></div>';
         return;
     }
     
     container.innerHTML = titles.map(title => `
         <div class="col-md-4 col-lg-3 mb-4">
-            <div class="card title-card h-100" onclick="showTitleDetails('${title.id}', '${title.title}', '${title.plot_overview}', '${title.poster}', ${title.user_rating}, ${JSON.stringify(title.source_ids)}, ${JSON.stringify(title.genre_ids)})">
+            <div class="card title-card h-100" onclick="showTitleDetails(${JSON.stringify(title)})">
                 <div class="position-relative">
                     <img src="${title.poster || 'https://via.placeholder.com/300x450?text=No+Image'}" 
                          class="card-img-top title-image" 
@@ -271,27 +271,25 @@ function renderTitles(titles, containerId) {
                 </div>
                 <div class="card-body">
                     <h6 class="card-title">${title.title}</h6>
-                    <p class="card-text text-muted small">${title.plot_overview.substring(0, 100)}${title.plot_overview.length > 100 ? '...' : ''}</p>
+                    <p class="card-text text-muted small">${(title.plot_overview || '').substring(0, 100)}${title.plot_overview && title.plot_overview.length > 100 ? '...' : ''}</p>
                 </div>
             </div>
         </div>
     `).join('');
 }
 
-function showTitleDetails(id, title, plot, poster, rating, sourceIds, genreIds) {
-    document.getElementById('titleModalTitle').textContent = title;
-    document.getElementById('titleModalImage').src = poster || 'https://via.placeholder.com/300x450?text=No+Image';
-    document.getElementById('titleModalPlot').textContent = plot || 'No description available';
-    document.getElementById('titleModalRating').textContent = rating > 0 ? `${rating}/10` : 'Not rated';
+function showTitleDetails(title) {
+    document.getElementById('titleModalTitle').textContent = title.title;
+    document.getElementById('titleModalImage').src = title.poster || 'https://via.placeholder.com/300x450?text=No+Image';
+    document.getElementById('titleModalPlot').textContent = title.plot_overview || 'No description available';
+    document.getElementById('titleModalRating').textContent = title.user_rating > 0 ? `${title.user_rating}/10` : 'Not rated';
     
-    // Get source and genre names
-    const sourceNames = sourceIds.map(id => sources.find(s => s.id.toString() === id.toString())?.name || 'Unknown').join(', ');
-    const genreNames = genreIds.map(id => genres.find(g => g.id.toString() === id.toString())?.name || 'Unknown').join(', ');
+    const sourceNames = (title.source_ids || []).map(id => sources.find(s => s.id.toString() === id.toString())?.name || 'Unknown').join(', ');
+    const genreNames = (title.genre_ids || []).map(id => genres.find(g => g.id.toString() === id.toString())?.name || 'Unknown').join(', ');
     
     document.getElementById('titleModalSources').textContent = sourceNames;
     document.getElementById('titleModalGenres').textContent = genreNames;
     
-    // Show modal
     const modal = new bootstrap.Modal(document.getElementById('titleModal'));
     modal.show();
 }
@@ -302,20 +300,4 @@ function showLoading(elementId) {
 
 function hideLoading(elementId) {
     document.getElementById(elementId).style.display = 'none';
-}
-
-// Utility function to get URL parameters
-function getUrlParameter(name) {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get(name);
-}
-
-// Handle authentication callback
-function handleAuthCallback() {
-    const code = getUrlParameter('code');
-    if (code) {
-        // Handle the authentication code
-        // This would typically involve exchanging the code for tokens
-        console.log('Auth code received:', code);
-    }
 }
