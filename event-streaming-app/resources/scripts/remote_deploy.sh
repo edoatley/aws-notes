@@ -23,6 +23,9 @@ else
     echo "✅ AWS SSO session is active."
 fi
 
+# Get AWS Account ID for constructing resource names if needed
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --profile "${PROFILE}")
+
 # Navigate to the SAM project directory to ensure samconfig.toml is found
 cd "$(dirname "$0")/../../"
 
@@ -31,8 +34,29 @@ echo "🚀 Step 2: Checking stack status and cleaning up if necessary..."
 ########################################################################################################################
 STACK_STATUS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].StackStatus" --output text --profile "$PROFILE" --region "$REGION" 2>/dev/null || echo "DOES_NOT_EXIST")
 
-if [ "$STACK_STATUS" == "ROLLBACK_COMPLETE" ]; then
-    echo "🗑️ Stack is in ROLLBACK_COMPLETE state. Deleting it before deployment..."
+if [ "$STACK_STATUS" == "ROLLBACK_COMPLETE" ] || [ "$STACK_STATUS" == "DELETE_FAILED" ]; then
+    echo "🗑️ Stack is in a recoverable but failed state ($STACK_STATUS). Cleaning up before deployment..."
+
+    # First, try to get the bucket name from the failed stack's outputs.
+    WEBSITE_BUCKET=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebsiteBucket'].OutputValue" --output text --profile "$PROFILE" --region "$REGION" 2>/dev/null)
+
+    # If the output doesn't exist (common in rollbacks), construct the name manually.
+    if [ -z "$WEBSITE_BUCKET" ] || [ "$WEBSITE_BUCKET" == "None" ]; then
+        echo "⚠️ Could not find WebsiteBucket in stack outputs. Constructing name manually."
+        WEBSITE_BUCKET="${STACK_NAME}-website-${ACCOUNT_ID}"
+    fi
+
+    echo "🧹 Emptying S3 bucket: s3://${WEBSITE_BUCKET}..."
+    # Use aws s3 ls to check if the bucket exists before trying to empty it.
+    if aws s3 ls "s3://${WEBSITE_BUCKET}" --profile "${PROFILE}" --region "$REGION" > /dev/null 2>&1; then
+        aws s3 rm "s3://${WEBSITE_BUCKET}" --recursive --profile "$PROFILE" --region "$REGION"
+        aws s3api delete-bucket --bucket "${WEBSITE_BUCKET}" --profile "$PROFILE" --region "$REGION"
+        echo "✅ Bucket emptied and deleted to be safe."
+    else
+        echo "✅ Bucket does not exist or is already gone. No action needed."
+    fi
+
+    echo "🗑️ Deleting stack..."
     aws cloudformation delete-stack --stack-name "$STACK_NAME" --profile "$PROFILE" --region "$REGION"
     echo "⏳ Waiting for stack to be deleted..."
     aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" --profile "$PROFILE" --region "$REGION"
@@ -101,16 +125,32 @@ USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NA
 USER_POOL_DOMAIN=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolDomain'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 WEB_API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebApiEndpoint'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 
+# Validate that all required outputs were fetched
+if [ -z "$WEBSITE_BUCKET" ] || [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ] || [ -z "$USER_POOL_DOMAIN" ] || [ -z "$WEB_API_ENDPOINT" ]; then
+    echo "❌ Error: Failed to retrieve one or more required outputs from the CloudFormation stack."
+    echo "Please check the stack '$STACK_NAME' in the AWS console and ensure it deployed successfully with all outputs."
+    exit 1
+fi
+echo "✅ All required stack outputs retrieved successfully."
+
 # Create config.js in the web directory
 CONFIG_FILE="src/web/config.js"
 echo "📝 Creating config file at ${CONFIG_FILE}..."
 cat << EOF > "$CONFIG_FILE"
-window.config = {
-    userPoolId: "${USER_POOL_ID}",
-    userPoolClientId: "${USER_POOL_CLIENT_ID}",
-    userPoolDomain: "${USER_POOL_DOMAIN}.auth.${REGION}.amazoncognito.com",
-    apiEndpoint: "${WEB_API_ENDPOINT}",
-    preferencesApiEndpoint: "${WEB_API_ENDPOINT}"
+window.appConfig = {
+    Auth: {
+        userPoolId: "${USER_POOL_ID}",
+        userPoolClientId: "${USER_POOL_CLIENT_ID}",
+        region: "${REGION}",
+        oauth: {
+            domain: "${USER_POOL_DOMAIN}.auth.${REGION}.amazoncognito.com",
+            scope: ['openid', 'email', 'profile'],
+            redirectSignIn: "", // Not used in this flow, but good to have
+            redirectSignOut: "", // Not used in this flow
+            responseType: 'token'
+        }
+    },
+    ApiEndpoint: "${WEB_API_ENDPOINT}"
 };
 EOF
 echo "✅ Config file created."
@@ -119,3 +159,15 @@ echo "✅ Config file created."
 echo "🔄 Syncing src/web/ to s3://${WEBSITE_BUCKET}..."
 aws s3 sync "src/web/" "s3://${WEBSITE_BUCKET}" --profile "${PROFILE}" --region "${REGION}" --delete
 echo "✅ Web content synced successfully."
+
+########################################################################################################################
+echo "🧹 Step 7: Clearing the CloudFront cache..."
+########################################################################################################################
+DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebsiteDistributionId'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+if [ -z "$DISTRIBUTION_ID" ]; then
+    echo "❌ Could not retrieve CloudFront Distribution ID from stack outputs. Aborting cache clear."
+    exit 1
+fi
+
+aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*" --profile "$PROFILE" --region "$REGION" | jq
+echo "✅ CloudFront cache invalidation created. Changes will be live shortly."

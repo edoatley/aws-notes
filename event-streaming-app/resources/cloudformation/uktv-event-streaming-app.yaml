@@ -56,6 +56,7 @@ Resources:
     Properties:
       StreamModeDetails:
         StreamMode: ON_DEMAND
+      RetentionPeriodHours: 24
 
   WebsiteBucket:
     Type: AWS::S3::Bucket
@@ -94,7 +95,7 @@ Resources:
         DefaultRootObject: index.html
         Origins:
           - Id: !Sub "S3-${WebsiteBucket}"
-            DomainName: !GetAtt WebsiteBucket.DomainName
+            DomainName: !GetAtt WebsiteBucket.RegionalDomainName # Use the regional domain name to avoid redirects
             S3OriginConfig:
               OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOAI}"
         DefaultCacheBehavior:
@@ -130,8 +131,8 @@ Resources:
       UserPoolId: !Ref UserPreferencesUserPool
       GenerateSecret: false
       SupportedIdentityProviders: [COGNITO]
-      CallbackURLs: [!Sub "https://${WebsiteDistribution.DomainName}/"]
-      LogoutURLs: [!Sub "https://${WebsiteDistribution.DomainName}/"]
+      CallbackURLs: [!Sub "https://${WebsiteDistribution.DomainName}/index.html", "http://localhost:8000/index.html"]
+      LogoutURLs: [!Sub "https://${WebsiteDistribution.DomainName}/index.html", "http://localhost:8000/index.html"]
       AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthFlows: [implicit, code]
       AllowedOAuthScopes: [openid, email, profile]
@@ -234,6 +235,9 @@ Outputs:
   WebsiteUrl:
     Description: "The URL of the hosted website (CloudFront)"
     Value: !Sub "https://${WebsiteDistribution.DomainName}"
+  WebsiteDistributionId:
+    Description: "The ID of the CloudFront distribution"
+    Value: !Ref WebsiteDistribution
   WebApiEndpoint:
     Description: "The Web API endpoint URL"
     Value: !GetAtt WebApiApp.Outputs.ApiEndpoint

@@ -1,129 +1,62 @@
-// Global variables
-let currentUser = null;
-let userSession = null;
-let sources = [];
-let genres = [];
-
-// Initialize the application
-document.addEventListener('DOMContentLoaded', function() {
-    initializeApp();
-});
-
-async function initializeApp() {
-    // Handle the authentication callback if present
-    if (window.location.hash.includes('id_token')) {
-        await handleAuthCallback();
-    }
-
-    // Check the user's authentication status
-    await checkAuthStatus();
-
-    // Set up event listeners after checking auth status
-    setupEventListeners();
-}
-
-function setupEventListeners() {
-    document.getElementById('loginBtn').addEventListener('click', showLogin);
-    document.getElementById('logoutBtn').addEventListener('click', logout);
-    document.getElementById('updatePreferencesBtn').addEventListener('click', updatePreferences);
-    
-    // Tab change events
-    document.getElementById('titles-tab').addEventListener('click', () => loadTitles());
-    document.getElementById('recommendations-tab').addEventListener('click', () => loadRecommendations());
-}
-
-function getCognitoAuth() {
-    if (!config.userPoolDomain) {
-        console.error("Cognito domain not configured!");
+function parseJwt(token) {
+    try {
+        return JSON.parse(atob(token.split('.')[1]));
+    } catch (e) {
         return null;
     }
-    // This constructor comes from the amazon-cognito-auth-js library
-    return new AmazonCognitoIdentity.CognitoAuth({
-        UserPoolId: config.userPoolId,
-        ClientId: config.userPoolClientId,
-        RedirectUriSignIn: window.location.origin,
-        RedirectUriSignOut: window.location.origin,
-        TokenScopesArray: ['openid', 'email', 'profile'],
-        Domain: config.userPoolDomain
-    });
 }
 
-function showLogin() {
-    const auth = getCognitoAuth();
-    if (auth) {
-        auth.getSession();
-    }
+function handleLogin() {
+    const cognitoDomain = window.appConfig.Auth.oauth.domain;
+    const clientId = window.appConfig.Auth.userPoolClientId;
+    const redirectUri = window.location.origin + "/index.html";
+    const responseType = "token";
+    const scope = window.appConfig.Auth.oauth.scope.join(' ');
+
+    const url = `https://${cognitoDomain}/login?response_type=${responseType}&client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}`;
+    window.location.assign(url);
 }
 
-async function checkAuthStatus() {
-    const auth = getCognitoAuth();
-    if (!auth) return;
-
-    return new Promise((resolve) => {
-        auth.parseCognitoWebResponse(window.location.href);
-        userSession = auth.getSignInUserSession();
-
-        if (userSession && userSession.isValid()) {
-            currentUser = userSession.getIdToken().payload;
-            onUserAuthenticated();
-        } else {
-            onUserLoggedOut();
-        }
-        resolve();
-    });
+function handleLogout() {
+    localStorage.removeItem('id_token');
+    const cognitoDomain = window.appConfig.Auth.oauth.domain;
+    const clientId = window.appConfig.Auth.userPoolClientId;
+    const redirectUri = window.location.origin + "/index.html";
+    const logoutUrl = `https://${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${redirectUri}`;
+    window.location.assign(logoutUrl);
 }
 
-function handleAuthCallback() {
-    return new Promise((resolve) => {
-        const auth = getCognitoAuth();
-        if (auth) {
-            auth.parseCognitoWebResponse(window.location.href);
-            userSession = auth.getSignInUserSession();
-            if (userSession && userSession.isValid()) {
-                // Clear the hash from the URL
-                window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-            }
-        }
-        resolve();
-    });
-}
+let sources = [];
+let genres = [];
+let isAppInitialized = false;
 
-function onUserAuthenticated() {
-    document.getElementById('authSection').style.display = 'none';
-    document.getElementById('mainContent').style.display = 'block';
-    document.getElementById('loginBtn').style.display = 'none';
-    document.getElementById('logoutBtn').style.display = 'block';
-    
-    // Load initial data
+function startApp() {
+    if (isAppInitialized) return;
+    isAppInitialized = true;
+
+    console.log("Authenticated: Starting application...");
+    setupAppEventListeners();
+
     loadSources();
     loadGenres();
     loadUserPreferences();
     loadTitles();
 }
 
-function onUserLoggedOut() {
-    document.getElementById('mainContent').style.display = 'none';
-    document.getElementById('authSection').style.display = 'block';
-    document.getElementById('loginBtn').style.display = 'block';
-    document.getElementById('logoutBtn').style.display = 'none';
+function setupAppEventListeners() {
+    document.getElementById('updatePreferencesBtn').addEventListener('click', updatePreferences);
+    document.getElementById('titles-tab').addEventListener('click', () => loadTitles());
+    document.getElementById('recommendations-tab').addEventListener('click', () => loadRecommendations());
 }
 
-function logout() {
-    const auth = getCognitoAuth();
-    if (auth) {
-        auth.signOut();
-    }
-}
-
-// API functions
 async function makeApiRequest(path, method = 'GET', body = null) {
     try {
         const headers = {
             'Content-Type': 'application/json'
         };
-        if (userSession) {
-            const token = userSession.getIdToken().getJwtToken();
-            headers['Authorization'] = `Bearer ${token}`;
+
+        if (window.idToken) {
+            headers['Authorization'] = `Bearer ${window.idToken}`;
         }
 
         const options = { method, headers };
@@ -131,11 +64,18 @@ async function makeApiRequest(path, method = 'GET', body = null) {
             options.body = JSON.stringify(body);
         }
 
-        const response = await fetch(`${config.apiEndpoint}${path}`, options);
+        const response = await fetch(`${window.appConfig.ApiEndpoint}${path}`, options);
+
         if (!response.ok) {
             throw new Error(`API request failed with status ${response.status}`);
         }
-        return await response.json();
+
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+            return await response.json();
+        } else {
+            return;
+        }
     } catch (error) {
         console.error(`Error in API request to ${path}:`, error);
         throw error;
@@ -163,7 +103,9 @@ async function loadGenres() {
 async function loadUserPreferences() {
     try {
         const preferences = await makeApiRequest('/preferences');
-        updatePreferencesUI(preferences);
+        if (preferences) {
+            updatePreferencesUI(preferences);
+        }
     } catch (error) {
         console.error('Error loading user preferences:', error);
     }
@@ -172,11 +114,10 @@ async function loadUserPreferences() {
 async function updatePreferences() {
     const selectedSources = Array.from(document.querySelectorAll('input[name="source"]:checked')).map(cb => cb.value);
     const selectedGenres = Array.from(document.querySelectorAll('input[name="genre"]:checked')).map(cb => cb.value);
-    
+
     try {
         await makeApiRequest('/preferences', 'PUT', { sources: selectedSources, genres: selectedGenres });
         alert('Preferences updated successfully!');
-        // Reload titles and recommendations to reflect changes
         loadTitles();
         loadRecommendations();
     } catch (error) {
@@ -208,10 +149,9 @@ async function loadRecommendations() {
     }
 }
 
-// UI rendering functions
 function renderSourcesList() {
     const container = document.getElementById('sourcesList');
-    container.innerHTML = sources.map(source => `
+    if(container) container.innerHTML = sources.map(source => `
         <div class="form-check">
             <input class="form-check-input" type="checkbox" name="source" value="${source.id}" id="source_${source.id}">
             <label class="form-check-label" for="source_${source.id}">
@@ -223,7 +163,7 @@ function renderSourcesList() {
 
 function renderGenresList() {
     const container = document.getElementById('genresList');
-    container.innerHTML = genres.map(genre => `
+    if(container) container.innerHTML = genres.map(genre => `
         <div class="form-check">
             <input class="form-check-input" type="checkbox" name="genre" value="${genre.id}" id="genre_${genre.id}">
             <label class="form-check-label" for="genre_${genre.id}">
@@ -235,14 +175,12 @@ function renderGenresList() {
 
 function updatePreferencesUI(preferences) {
     if (!preferences) return;
-    // Check sources
     if (preferences.sources) {
         preferences.sources.forEach(sourceId => {
             const checkbox = document.getElementById(`source_${sourceId}`);
             if (checkbox) checkbox.checked = true;
         });
     }
-    // Check genres
     if (preferences.genres) {
         preferences.genres.forEach(genreId => {
             const checkbox = document.getElementById(`genre_${genreId}`);
@@ -253,15 +191,16 @@ function updatePreferencesUI(preferences) {
 
 function renderTitles(titles, containerId) {
     const container = document.getElementById(containerId);
-    
+    if (!container) return;
+
     if (!titles || titles.length === 0) {
         container.innerHTML = '<div class="col-12"><p class="text-muted">No titles found.</p></div>';
         return;
     }
-    
+
     container.innerHTML = titles.map(title => `
         <div class="col-md-4 col-lg-3 mb-4">
-            <div class="card title-card h-100" onclick="showTitleDetails(${JSON.stringify(title)})">
+            <div class="card title-card h-100" onclick='showTitleDetails(${JSON.stringify(title).replace(/'/g, "&apos;")})'>
                 <div class="position-relative">
                     <img src="${title.poster || 'https://via.placeholder.com/300x450?text=No+Image'}" 
                          class="card-img-top title-image" 
@@ -283,21 +222,90 @@ function showTitleDetails(title) {
     document.getElementById('titleModalImage').src = title.poster || 'https://via.placeholder.com/300x450?text=No+Image';
     document.getElementById('titleModalPlot').textContent = title.plot_overview || 'No description available';
     document.getElementById('titleModalRating').textContent = title.user_rating > 0 ? `${title.user_rating}/10` : 'Not rated';
-    
+
     const sourceNames = (title.source_ids || []).map(id => sources.find(s => s.id.toString() === id.toString())?.name || 'Unknown').join(', ');
     const genreNames = (title.genre_ids || []).map(id => genres.find(g => g.id.toString() === id.toString())?.name || 'Unknown').join(', ');
-    
+
     document.getElementById('titleModalSources').textContent = sourceNames;
     document.getElementById('titleModalGenres').textContent = genreNames;
-    
+
     const modal = new bootstrap.Modal(document.getElementById('titleModal'));
     modal.show();
 }
 
 function showLoading(elementId) {
-    document.getElementById(elementId).style.display = 'block';
+    const el = document.getElementById(elementId);
+    if (el) el.style.display = 'block';
 }
 
 function hideLoading(elementId) {
-    document.getElementById(elementId).style.display = 'none';
+    const el = document.getElementById(elementId);
+    if (el) el.style.display = 'none';
 }
+
+function initializeApp() {
+    const path = window.location.pathname;
+
+    if (path.endsWith('login.html')) {
+        const loginButton = document.getElementById('loginPageLoginBtn');
+        if (loginButton) {
+            loginButton.addEventListener('click', handleLogin);
+        }
+        return;
+    }
+
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const authSection = document.getElementById('authSection');
+    const mainContent = document.getElementById('mainContent');
+
+    if (!loginBtn) return; // We are on a page without login buttons
+
+    loginBtn.addEventListener('click', handleLogin);
+    logoutBtn.addEventListener('click', handleLogout);
+
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const id_token = params.get('id_token');
+
+    if (id_token) {
+        localStorage.setItem('id_token', id_token);
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    }
+
+    const stored_token = localStorage.getItem('id_token');
+
+    if (stored_token) {
+        const decodedToken = parseJwt(stored_token);
+        if (decodedToken && decodedToken.exp * 1000 > Date.now()) {
+            authSection.style.display = 'none';
+            mainContent.style.display = 'block';
+            loginBtn.style.display = 'none';
+            logoutBtn.style.display = 'block';
+            window.idToken = stored_token;
+            startApp();
+        } else {
+            localStorage.removeItem('id_token');
+            authSection.style.display = 'block';
+            mainContent.style.display = 'none';
+            loginBtn.style.display = 'block';
+            logoutBtn.style.display = 'none';
+        }
+    } else {
+        authSection.style.display = 'block';
+        mainContent.style.display = 'none';
+        loginBtn.style.display = 'block';
+        logoutBtn.style.display = 'none';
+    }
+}
+
+function waitForConfigAndInitialize() {
+    const interval = setInterval(() => {
+        if (window.appConfig) {
+            clearInterval(interval);
+            initializeApp();
+        }
+    }, 50);
+}
+
+document.addEventListener('DOMContentLoaded', waitForConfigAndInitialize);
