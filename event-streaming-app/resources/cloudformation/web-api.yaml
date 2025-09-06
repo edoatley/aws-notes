@@ -92,12 +92,19 @@ Resources:
                   description: "A list of all available genres"
 
           # --- Protected Endpoints ---
+          # These endpoints require BOTH a Cognito JWT for user authentication
+          # AND an API Key for usage plan tracking.
+          # UPDATE: The API Key requirement has been set to false (`x-amazon-apigateway-api-key-required: false`).
+          # This allows the browser-based Single Page Application (SPA) to call these endpoints
+          # without embedding a secret API key. The Cognito JWT remains the primary security
+          # mechanism for authenticating the user. API keys can still be sent by other clients
+          # (like test scripts) and will be tracked by the Usage Plan.
           /titles:
             get:
               summary: "Get titles based on user preferences"
               security:
                 - CognitoAuthorizer: []
-                - ApiKeyAuthorizer: []
+              x-amazon-apigateway-api-key-required: false
               x-amazon-apigateway-integration:
                 type: "aws_proxy"
                 httpMethod: "POST"
@@ -111,7 +118,7 @@ Resources:
               summary: "Get new recommendations for the user"
               security:
                 - CognitoAuthorizer: []
-                - ApiKeyAuthorizer: []
+              x-amazon-apigateway-api-key-required: false
               x-amazon-apigateway-integration:
                 type: "aws_proxy"
                 httpMethod: "POST"
@@ -125,7 +132,7 @@ Resources:
               summary: "Get user preferences"
               security:
                 - CognitoAuthorizer: []
-                - ApiKeyAuthorizer: []
+              x-amazon-apigateway-api-key-required: false
               x-amazon-apigateway-integration:
                 type: "aws_proxy"
                 httpMethod: "POST"
@@ -138,7 +145,7 @@ Resources:
               summary: "Update user preferences"
               security:
                 - CognitoAuthorizer: []
-                - ApiKeyAuthorizer: []
+              x-amazon-apigateway-api-key-required: false
               x-amazon-apigateway-integration:
                 type: "aws_proxy"
                 httpMethod: "POST"
@@ -150,6 +157,9 @@ Resources:
 
         components:
           securitySchemes:
+            # Security scheme for authenticating end-users via Cognito.
+            # The JWT is passed in the 'Authorization' header.
+            # This provides the user's identity ('sub' claim) to the backend Lambda.
             CognitoAuthorizer:
               type: "apiKey"
               name: "Authorization"
@@ -160,6 +170,9 @@ Resources:
                 providerARNs:
                   - !Ref UserPoolArn
 
+            # This defines that an API key is expected in the 'x-api-key' header.
+            # It is not used as a direct authorizer, but enables the 'x-amazon-apigateway-api-key-required: true'
+            # property on methods, which links them to a Usage Plan for throttling and quotas.
             ApiKeyAuthorizer:
               type: "apiKey"
               name: "x-api-key" # Standard header for API keys

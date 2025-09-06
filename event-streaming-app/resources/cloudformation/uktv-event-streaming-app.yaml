@@ -133,9 +133,18 @@ Resources:
       SupportedIdentityProviders: [COGNITO]
       CallbackURLs: [!Sub "https://${WebsiteDistribution.DomainName}/index.html", "http://localhost:8000/index.html"]
       LogoutURLs: [!Sub "https://${WebsiteDistribution.DomainName}/index.html", "http://localhost:8000/index.html"]
-      AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthFlows: [implicit, code]
       AllowedOAuthScopes: [openid, email, profile]
+
+  TestScriptUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${AWS::StackName}-TestScriptClient"
+      UserPoolId: !Ref UserPreferencesUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
 
   UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
@@ -218,8 +227,11 @@ Outputs:
     Description: "The ID of the Cognito User Pool"
     Value: !Ref UserPreferencesUserPool
   UserPoolClientId:
-    Description: "The ID of the Cognito User Pool App Client"
+    Description: "The ID of the Cognito User Pool App Client for the web app"
     Value: !Ref UserPreferencesUserPoolClient
+  TestScriptUserPoolClientId:
+    Description: "The ID of the Cognito User Pool App Client for test scripts"
+    Value: !Ref TestScriptUserPoolClient
   UserPoolDomain:
     Description: "The domain of the Cognito User Pool"
     Value: !Ref UserPoolDomain

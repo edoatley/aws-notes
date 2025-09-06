@@ -74,16 +74,6 @@ def get_ref_data(prefix:str):
         logger.error(f"DynamoDB error getting ref_data: {e}", exc_info=True)
         return []
 
-def get_all_sources():
-    """Get all sources from DynamoDB."""
-    logger.info("Fetching all sources from DynamoDB.")
-    return get_ref_data(SOURCE_PREFIX)
-
-def get_all_genres():
-    """Get all genres from DynamoDB."""
-    logger.info("Fetching all genres from DynamoDB.")
-    return get_ref_data(GENRE_PREFIX)
-
 def get_user_preferences(user_id):
     """Get user preferences from DynamoDB."""
     try:
@@ -244,15 +234,22 @@ def lambda_handler(event, context):
     # --- Public endpoints (no authentication required) ---
     if http_method == 'GET':
         if path == '/sources':
-            return build_response(200, get_all_sources())
+            return build_response(200, get_ref_data(SOURCE_PREFIX))
         if path == '/genres':
-            return build_response(200, get_all_genres())
+            return build_response(200, get_ref_data(GENRE_PREFIX))
 
     # --- Protected endpoints (authentication required) ---
+    # For protected endpoints, the user's identity is required to fetch or modify
+    # user-specific data (e.g., preferences). The identity is provided by the
+    # API Gateway's Cognito Authorizer, which validates the JWT (ID Token) sent
+    # in the 'Authorization' header. The 'sub' claim from the token, which is a
+    # unique identifier for the user, is passed to the Lambda in the event context.
     try:
         user_id = event.get('requestContext', {}).get('authorizer', {}).get('claims', {}).get('sub')
         if not user_id:
-            logger.warning("User ID not found in authorizer claims.")
+            logger.warning(
+                "User ID not found in authorizer claims. This indicates a misconfiguration or a call that bypassed the authorizer."
+            )
             return build_response(401, {"error": "Unauthorized"})
     except Exception:
         logger.error("Could not parse user ID from event.", exc_info=True)

@@ -691,7 +691,7 @@ localstack to set up a local set of these services
 
 - The first step is to create a docker compose file to define the localstack services we will use in place of the real
   AWS services. This is defined here [docker-compose.yaml](../../docker-compose.yaml)
-- The second step is to create a script to initialize the local resources. This is defined in [local-test-setup.sh](../scripts/tests/local_setup.sh).
+- The second step is to create a script to initialize the local resources. This is defined in [local-test-setup.sh](../scripts/local_tests/local_setup.sh).
 - The third step is to remove all direct WatchMode API keys from the lambdas as we can save them to the LocalStack secrets manager now. This also means
   we can remove the local-secrets.json as everything can be saved to source control as we have no secrets hardcoded
 - The final step is to create a script to run all the tests to make testing easier which I did in [resources/local-test-execute-all.sh](./resources/local-test-execute-all.sh]
@@ -707,7 +707,7 @@ Note: The test script sets the `AWS_ENDPOINT_URL` to `http://localstack:4566` to
 
 ### Specialist Test Script for Title Ingestion
 
-To test the title ingestion we need a specialist script I created as [test_e2e.sh](../scripts/tests/test_e2e.sh).
+To test the title ingestion we need a specialist script I created as [test_e2e.sh](../scripts/local_tests/test_e2e.sh).
 This script performs a full integration test of the `UserPrefsTitleIngestionFunction` by:
 
 - **Setting up** test data by creating a dummy user with specific source and genre preferences in the local DynamoDB instance.
@@ -725,7 +725,7 @@ The logic used in the new function to save titles to Dynamo named `TitleRecommen
 
 The lambda source for this is in [src/title_recommendations_consumer](../../src/title_recommendations_consumer)
 
-We can now extend our [end-to-end test script](../scripts/tests/test_e2e.sh) to test this by adding:
+We can now extend our [end-to-end test script](../scripts/local_tests/test_e2e.sh) to test this by adding:
  - call to `TitleRecommendationsConsumerFunction` with published kinesis data
  - check of dynamo for the expected rows
 

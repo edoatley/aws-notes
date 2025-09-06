@@ -26,9 +26,8 @@ This document outlines the plan to enhance the UK TV Guide application, focusing
 - [x] Verify that the web API (`event-streaming-app/src/web_api/web_api.py`) successfully returns data (sources, genres, preferences, titles, recommendations) from DynamoDB.
 - [x] Verify that the web front end (`event-streaming-app/src/web/index.html.py`) displays the data correctly.
 - [x] Create API Key for web API
-- [ ] Create tests to validate the web API functionality.
-
-
+- [x] Create tests to validate the web API functionality.
+- [ ] Check the web front end seems correct
 
 ### Phase 3: Admin Screen Design and Implementation (Deferred)
 - [ ] **Design:** Plan the layout and functionality of the admin screen in Architect mode.
