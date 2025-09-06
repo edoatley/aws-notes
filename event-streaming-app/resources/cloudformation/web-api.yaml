@@ -13,6 +13,44 @@ Parameters:
     Type: String
 
 Resources:
+  # API Key for direct access 
+  WebApiTestApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Name: "web-api-key"
+      Enabled: true
+
+  # Usage Plan to associate with the API Key and API Gateway
+  WebApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: "web-api-usage-plan"
+      ApiStages:
+        - ApiId: !Ref WebApi
+          Stage: "Prod"
+      Quota:
+        Limit: 1000
+        Period: DAY
+      Throttle:
+        RateLimit: 5
+        BurstLimit: 10
+
+  # Associate the API Key with the Usage Plan
+  WebApiUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      UsagePlanId: !Ref WebApiUsagePlan
+      KeyId: !Ref WebApiTestApiKey
+      KeyType: "API_KEY"
+
+  WebApiTestApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}/WebApiTestApiKey"
+      Description: API key for Web API testing
+      SecretString: !Ref WebApiTestApiKey
+
+
   # The API Gateway for the Web API
   WebApi:
     Type: AWS::Serverless::Api
@@ -59,6 +97,7 @@ Resources:
               summary: "Get titles based on user preferences"
               security:
                 - CognitoAuthorizer: []
+                - ApiKeyAuthorizer: []
               x-amazon-apigateway-integration:
                 type: "aws_proxy"
                 httpMethod: "POST"
@@ -72,6 +111,7 @@ Resources:
               summary: "Get new recommendations for the user"
               security:
                 - CognitoAuthorizer: []
+                - ApiKeyAuthorizer: []
               x-amazon-apigateway-integration:
                 type: "aws_proxy"
                 httpMethod: "POST"
@@ -85,6 +125,7 @@ Resources:
               summary: "Get user preferences"
               security:
                 - CognitoAuthorizer: []
+                - ApiKeyAuthorizer: []
               x-amazon-apigateway-integration:
                 type: "aws_proxy"
                 httpMethod: "POST"
@@ -97,6 +138,7 @@ Resources:
               summary: "Update user preferences"
               security:
                 - CognitoAuthorizer: []
+                - ApiKeyAuthorizer: []
               x-amazon-apigateway-integration:
                 type: "aws_proxy"
                 httpMethod: "POST"
@@ -118,6 +160,11 @@ Resources:
                 providerARNs:
                   - !Ref UserPoolArn
 
+            ApiKeyAuthorizer:
+              type: "apiKey"
+              name: "x-api-key" # Standard header for API keys
+              in: "header"
+
   # The Lambda function that backs the Web API
   WebApiFunction:
     Type: AWS::Serverless::Function
@@ -134,6 +181,7 @@ Resources:
                 - dynamodb:Query
                 - dynamodb:GetItem
                 - dynamodb:BatchWriteItem
+                - dynamodb:Scan
               Resource: !Ref ProgramDataTableArn
       Environment:
         Variables:
@@ -154,6 +202,9 @@ Outputs:
   WebApiFunctionName:
     Description: "Name of the Web API Lambda function"
     Value: !Ref WebApiFunction
+  WebApiTestApiKey:
+    Description: "The API key for testing the Web API"
+    Value: !Ref WebApiTestApiKey
   WebApiFunctionArn:
     Description: "ARN of the Web API Lambda function"
     Value: !GetAtt WebApiFunction.Arn

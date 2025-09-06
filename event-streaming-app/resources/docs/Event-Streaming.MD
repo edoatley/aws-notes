@@ -5,7 +5,9 @@
 <!-- TOC -->
 - [Event Streaming app](#event-streaming-app)
   - [Table of contents](#table-of-contents)
-  - [Rough plan](#rough-plan)
+  - [Current Status \& Future Plan](#current-status--future-plan)
+    - [Completed Milestones:](#completed-milestones)
+    - [Next Steps \& Enhancements:](#next-steps--enhancements)
   - [Target Architecture diagram](#target-architecture-diagram)
   - [Step 1 - Initial set up](#step-1---initial-set-up)
   - [Step 2 - Shared infrastructure set up](#step-2---shared-infrastructure-set-up)
@@ -30,19 +32,38 @@
   - [Step 16 - incorporate teh S3 file sync into the cloudformation stack](#step-16---incorporate-teh-s3-file-sync-into-the-cloudformation-stack)
   - [Step 17 - schedule the API calls to get the shows and make it efficient](#step-17---schedule-the-api-calls-to-get-the-shows-and-make-it-efficient)
   - [Cleanup](#cleanup)
+  - [User Guide Outline](#user-guide-outline)
+    - [1. Introduction](#1-introduction)
+    - [2. Getting Started](#2-getting-started)
+    - [3. Browsing Titles](#3-browsing-titles)
+    - [4. Recommendations](#4-recommendations)
+    - [5. Managing Preferences](#5-managing-preferences)
+    - [6. Admin Features (if applicable to end-users)](#6-admin-features-if-applicable-to-end-users)
+    - [7. Troubleshooting](#7-troubleshooting)
+    - [8. FAQ](#8-faq)
 <!-- TOC -->
 
-## Rough plan
+## Current Status & Future Plan
+ 
+The project has made significant progress in establishing the backend data ingestion and API infrastructure. The current focus is on enhancing the user interface and administrative capabilities.
 
-- [x] Store TV reference data: A Lambda function will periodically fetch reference data and store in DynamoDB for use within the application
-- [x] A Simple RESTful API exposed via API Gateway and backed by a lambda that stores a users preferences.  
-- [x] Ingest TV and streaming data: A Lambda function will periodically fetch the latest TV schedules and streaming availability for the UK from an external API (limited to those categories users have preference for).
-- [x] Store the program guide: The processed data will be stored in a DynamoDB table, optimized for efficient querying of shows, channels, and streaming services.
-- [ ] Process and enrich the data: The raw data will be sent to a Kinesis Data Stream for real-time processing. Another Lambda function will consume this data, clean it, and potentially enrich it with additional information (e.g., ratings from another source).
-- [ ] Real-time updates: DynamoDB Streams will capture any changes to the program data (e.g., a schedule update). A final Lambda function will be triggered by these streams to, for example, send notifications for favorited shows.
-- [ ] Add Google IdP federation
-- [ ] Provide a single page web app user interface (a static website hosted on S3) and login with google credentials
-- [ ] Extend the web app to query API Gateway endpoints to display the TV offerings, update user preferences, etc.
+### Completed Milestones:
+- [x] Store TV reference data: A Lambda function periodically fetches reference data (sources, genres) and stores it in DynamoDB.
+- [x] User Preferences API: A RESTful API via API Gateway and Lambda manages user preferences (sources, genres).
+- [x] Ingest TV and streaming data: A Lambda function periodically fetches TV schedules and streaming availability based on user preferences.
+- [x] Store the program guide: Processed data is stored in a DynamoDB table, optimized for querying.
+- [x] Process and enrich the data: Raw data is sent to Kinesis, consumed by a Lambda, cleaned, and enriched with additional information (e.g., ratings).
+- [x] Real-time updates: DynamoDB Streams capture changes, triggering a Lambda for further processing (e.g., notifications).
+- [x] Add Google IdP federation: Google Identity Provider federation is integrated.
+- [x] Provide a single page web app user interface (a static website hosted on S3) and login with Google credentials.
+- [x] Extend the web app to query API Gateway endpoints to display the TV offerings, update user preferences, etc.
+
+### Next Steps & Enhancements:
+- [ ] **Improve Web UI Aesthetics:** Enhance the visual design and user experience of the web application.
+- [ ] **Implement Admin Screen:** Develop an administrative interface within the web UI to trigger backend data ingestion processes manually.
+- [ ] **Refine Application Requirements:** Document detailed functional and non-functional requirements.
+- [ ] **Create Comprehensive User Guide:** Develop a user guide for the web application.
+- [ ] **Robust automated tests:** enhance the bespoke testing approach with a test pack that validates the deployed application.
 
 ## Target Architecture diagram
 
@@ -881,11 +902,45 @@ A more efficient and accurate approach would be to modify the ingestion logic to
 
 
 ## Cleanup
-
+ 
 Delete the shared resources:
-
+ 
 ```bash
 aws cloudformation delete-stack \
   --stack-name uk-tv-guide-shared-infra \
   --profile streaming
 ```
+
+## User Guide Outline
+
+This section will outline the content for the user guide, which will provide comprehensive instructions on how to use the UK TV Guide application.
+
+### 1. Introduction
+- Welcome to UK TV Guide
+- Key Features
+
+### 2. Getting Started
+- Account Creation and Login (via Google)
+- Setting Up Your Preferences (Sources and Genres)
+
+### 3. Browsing Titles
+- Viewing All Available Titles
+- Understanding Title Details (Plot, Rating, Sources, Genres)
+
+### 4. Recommendations
+- How Recommendations Work
+- Viewing Your Personalized Recommendations
+
+### 5. Managing Preferences
+- Updating Streaming Sources
+- Updating Genre Preferences
+
+### 6. Admin Features (if applicable to end-users)
+- Overview of administrative tasks (e.g., triggering data refreshes - *this will be for a separate admin user guide*)
+
+### 7. Troubleshooting
+- Common Issues and Solutions
+- Contact Support
+
+### 8. FAQ
+- Frequently Asked Questions

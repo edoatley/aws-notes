@@ -46,27 +46,43 @@ def build_response(status_code, body):
         'body': json.dumps(body, default=str)
     }
 
+
+def get_ref_data(prefix:str):
+    """Get all sources from DynamoDB."""
+    logger.info("Fetching all {prefix}.")
+    try:
+        response = table.scan(
+            FilterExpression='begins_with(PK, :prefix)',
+
+            ExpressionAttributeValues={
+                ':prefix': prefix
+            },
+            ProjectionExpression='PK, SK'
+        )
+        
+        ref_data = []
+        for item in response.get('Items', []):
+            pk_parts = item.get('PK', '').split(':')
+            if len(pk_parts) == 2:
+                id = pk_parts[1] # Get the ID part after prefix
+                name = item.get('SK', 'Unknown') # Get name from SK
+                ref_data.append({"id": id, "name": name})
+        
+        logger.info(f"Found {len(ref_data)} sources.")
+        return ref_data
+    except ClientError as e:
+        logger.error(f"DynamoDB error getting ref_data: {e}", exc_info=True)
+        return []
+
 def get_all_sources():
-    """Get all sources. Placeholder returning hardcoded data."""
-    # In a real application, you would fetch this from DynamoDB
-    logger.info("Fetching all sources (placeholder data).")
-    return [
-        {"id": "203", "name": "Netflix"},
-        {"id": "372", "name": "Disney+"},
-        {"id": "387", "name": "Amazon Prime Video"}
-    ]
+    """Get all sources from DynamoDB."""
+    logger.info("Fetching all sources from DynamoDB.")
+    return get_ref_data(SOURCE_PREFIX)
 
 def get_all_genres():
-    """Get all genres. Placeholder returning hardcoded data."""
-    # In a real application, you would fetch this from DynamoDB
-    logger.info("Fetching all genres (placeholder data).")
-    return [
-        {"id": "1", "name": "Action"},
-        {"id": "2", "name": "Adventure"},
-        {"id": "4", "name": "Comedy"},
-        {"id": "7", "name": "Drama"},
-        {"id": "8", "name": "Fantasy"}
-    ]
+    """Get all genres from DynamoDB."""
+    logger.info("Fetching all genres from DynamoDB.")
+    return get_ref_data(GENRE_PREFIX)
 
 def get_user_preferences(user_id):
     """Get user preferences from DynamoDB."""

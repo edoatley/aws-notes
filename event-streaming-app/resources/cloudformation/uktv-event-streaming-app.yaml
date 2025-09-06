@@ -241,6 +241,9 @@ Outputs:
   WebApiEndpoint:
     Description: "The Web API endpoint URL"
     Value: !GetAtt WebApiApp.Outputs.ApiEndpoint
+  WebApiTestApiKey:
+    Description: "The API key for testing the Web API"
+    Value: !GetAtt WebApiApp.Outputs.WebApiTestApiKey
   UserPreferencesApiEndpoint:
     Description: "The User Preferences API endpoint URL"
     Value: !GetAtt UserPreferencesApp.Outputs.ApiEndpoint
