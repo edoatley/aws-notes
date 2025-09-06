@@ -130,6 +130,7 @@ Resources:
       ClientName: !Sub "${AWS::StackName}-AppClient"
       UserPoolId: !Ref UserPreferencesUserPool
       GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
       SupportedIdentityProviders: [COGNITO]
       CallbackURLs: [!Sub "https://${WebsiteDistribution.DomainName}/index.html", "http://localhost:8000/index.html"]
       LogoutURLs: [!Sub "https://${WebsiteDistribution.DomainName}/index.html", "http://localhost:8000/index.html"]
