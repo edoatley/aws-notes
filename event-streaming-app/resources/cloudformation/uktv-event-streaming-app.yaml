@@ -41,11 +41,15 @@ Resources:
     Properties:
       TableName: !Ref ProgrammesTableName
       AttributeDefinitions:
-        - { AttributeName: "PK", AttributeType: "S" }
-        - { AttributeName: "SK", AttributeType: "S" }
+        - AttributeName: "PK"
+          AttributeType: "S"
+        - AttributeName: "SK"
+          AttributeType: "S"
       KeySchema:
-        - { AttributeName: "PK", KeyType: "HASH" }
-        - { AttributeName: "SK", KeyType: "RANGE" }
+        - AttributeName: "PK"
+          KeyType: "HASH"
+        - AttributeName: "SK"
+          KeyType: "RANGE"
       BillingMode: PAY_PER_REQUEST
       StreamSpecification:
         StreamViewType: NEW_IMAGE
@@ -159,10 +163,12 @@ Resources:
       UserPoolId: !Ref UserPreferencesUserPool
       Username: !Ref TestUserName
       UserAttributes:
-        - { Name: email, Value: !Ref TestUserName }
-        - { Name: email_verified, Value: "true" }
+        - Name: email
+          Value: !Ref TestUserName
+        - Name: email_verified
+          Value: "true"
 
-  # ... (Nested Applications remain the same) ...
+  # --- Nested Applications ---
   UserPrefsTitleIngestionApp:
     Type: AWS::Serverless::Application
     Properties:
@@ -223,6 +229,108 @@ Resources:
         ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
         UserPoolArn: !GetAtt UserPreferencesUserPool.Arn
 
+  # --- New Admin Resources ---
+  AdminLambdaExecutionRole:
+     Type: AWS::IAM::Role
+     Properties:
+       RoleName: !Sub "${AWS::StackName}-AdminLambdaRole"
+       AssumeRolePolicyDocument:
+         Version: '2012-10-17'
+         Statement:
+           - Effect: Allow
+             Principal:
+               Service: lambda.amazonaws.com
+             Action: sts:AssumeRole
+       Policies:
+         - PolicyName: AdminLambdaBasicExecution
+           PolicyDocument:
+             Version: '2012-10-17'
+             Statement:
+               - Effect: Allow
+                 Action:
+                   - logs:CreateLogGroup
+                   - logs:CreateLogStream
+                   - logs:PutLogEvents
+                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-AdminLambda:*"
+         - PolicyName: AdminLambdaDynamoDBAccess
+           PolicyDocument:
+             Version: '2012-10-17'
+             Statement:
+               - Effect: Allow
+                 Action:
+                   - dynamodb:DescribeTable
+                   - dynamodb:ListTables
+                 Resource: "*" # Restrict to specific tables if possible
+         - PolicyName: AdminLambdaInvokeOtherLambdas
+           PolicyDocument:
+             Version: '2012-10-17'
+             Statement:
+               - Effect: Allow
+                 Action:
+                   - lambda:InvokeFunction
+                 Resource: 
+                   - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function/${AWS::StackName}-periodic-reference-PeriodicReferenceApp"
+                   - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function/${AWS::StackName}-userprefs-title-ingestion-UserPrefsTitleIngestionApp"
+                   - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function/${AWS::StackName}-title-enrichment-TitleEnrichmentApp"
+                   # Add other Lambda ARNs as needed
+ 
+   AdminLambdaFunction:
+     Type: AWS::Serverless::Function
+     Properties:
+       FunctionName: !Sub "${AWS::StackName}-AdminLambda"
+       CodeUri: event-streaming-app/src/admin_lambda/
+       Handler: admin_lambda.lambda_handler
+       Runtime: python3.11
+       MemorySize: 128
+       Timeout: 30
+       Policies:
+         - !Ref AdminLambdaExecutionRole
+       Environment:
+         Variables:
+           PROGRAMMES_TABLE_NAME: !Ref ProgrammesTable
+           PROGRAMMES_TABLE_ARN: !GetAtt ProgrammesTable.Arn
+           REFERENCE_DATA_LAMBDA_NAME: !Sub "${AWS::StackName}-periodic-reference-PeriodicReferenceApp"
+           TITLE_DATA_REFRESH_LAMBDA_NAME: !Sub "${AWS::StackName}-userprefs-title-ingestion-UserPrefsTitleIngestionApp"
+           TITLE_ENRICHMENT_LAMBDA_NAME: !Sub "${AWS::StackName}-title-enrichment-TitleEnrichmentApp"
+       Events:
+         AdminApiGetSummary:
+           Type: Api
+           Properties:
+             Path: /admin/system/dynamodb/summary
+             Method: get
+             RestApiId: !Ref ServerlessRestApi
+         AdminApiPostReferenceRefresh:
+           Type: Api
+           Properties:
+             Path: /admin/data/reference/refresh
+             Method: post
+             RestApiId: !Ref ServerlessRestApi
+         AdminApiPostTitleRefresh:
+           Type: Api
+           Properties:
+             Path: /admin/data/titles/refresh
+             Method: post
+             RestApiId: !Ref ServerlessRestApi
+         AdminApiPostTitleEnrich:
+           Type: Api
+           Properties:
+             Path: /admin/data/titles/enrich
+             Method: post
+             RestApiId: !Ref ServerlessRestApi
+ 
+ # API Gateway definition (already present in the template)
+  ServerlessRestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      EndpointConfiguration: REGIONAL
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'" # Adjust for security
+ 
+ # Authorizer definition would go here if needed for security
+
 Outputs:
   UserPoolId:
     Description: "The ID of the Cognito User Pool"
@@ -260,3 +368,6 @@ Outputs:
   UserPreferencesApiEndpoint:
     Description: "The User Preferences API endpoint URL"
     Value: !GetAtt UserPreferencesApp.Outputs.ApiEndpoint
+  AdminApiEndpoint:
+    Description: "The Admin API endpoint URL"
+    Value: !Sub "https://${ServerlessRestApi.RestApiId}.execute-api.${AWS::Region}.amazonaws.com/Prod/admin"
