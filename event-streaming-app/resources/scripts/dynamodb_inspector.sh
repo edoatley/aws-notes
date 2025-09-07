@@ -120,4 +120,25 @@ else
 fi
 
 echo "--------------------------------------------------"
+
+# Count unenriched titles
+echo "Unenriched Titles Summary:"
+UNENRICHED_COUNT=$(aws dynamodb scan --table-name "$TABLE_NAME" \
+    --filter-expression "begins_with(PK, :title_prefix) AND (attribute_not_exists(#d.poster) OR attribute_not_exists(#d.plot_overview) OR #d.poster = :empty_string)" \
+    --expression-attribute-names '{"#d": "data"}' \
+    --expression-attribute-values '{":title_prefix": {"S": "title:"}, ":empty_string": {"S": ""}}' \
+    --select "COUNT" --query "Count" --profile "$PROFILE" --region "$REGION")
+
+info "Found ${UNENRICHED_COUNT} titles missing a poster or plot."
+
+if [ "$UNENRICHED_COUNT" -gt 0 ]; then
+    info "Example unenriched title IDs:"
+    aws dynamodb scan --table-name "$TABLE_NAME" \
+        --filter-expression "begins_with(PK, :title_prefix) AND (attribute_not_exists(#d.poster) OR attribute_not_exists(#d.plot_overview) OR #d.poster = :empty_string)" \
+        --expression-attribute-names '{"#d": "data"}' \
+        --expression-attribute-values '{":title_prefix": {"S": "title:"}, ":empty_string": {"S": ""}}' \
+        --projection-expression "PK" --page-size 5 --profile "$PROFILE" --region "$REGION" | jq -r '.Items[].PK.S | "     - \(.)"'
+fi
+
+echo "--------------------------------------------------"
 echo "🎉 Inspection complete."

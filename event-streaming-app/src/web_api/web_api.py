@@ -199,7 +199,13 @@ def _get_titles_from_dynamo_optimized(user_id, filter_func=None):
             # Apply the filter function if it exists
             if filter_func and not filter_func(title_data):
                 continue
-            
+
+            # Add a check for essential data. If a title is not enriched with a poster
+            # and plot, it's better to not show it than to show an empty card.
+            if not title_data.get('poster') or not title_data.get('plot_overview'):
+                logger.debug(f"Skipping title {item.get('PK')} because it is missing poster or plot.")
+                continue
+
             title_id = item.get('PK').split(':', 1)[1]
             titles.append({
                 'id': title_id,

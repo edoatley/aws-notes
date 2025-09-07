@@ -10,17 +10,20 @@ REGION="eu-west-2"
 ########################################################################################################################
 echo "🚀 Step 1: Checking AWS SSO session for profile: ${PROFILE}..."
 ########################################################################################################################
-if ! aws sts get-caller-identity --profile "${PROFILE}" > /dev/null 2>&1; then
-    echo "⚠️ AWS SSO session expired or not found. Please log in."
-    aws sso login --profile "${PROFILE}"
+echo "🔎 Checking AWS SSO session for profile: ${PROFILE}..."
+# We don't redirect stderr here, so if the token is expired, the user sees the error.
+if ! aws sts get-caller-identity --profile "${PROFILE}" > /dev/null; then
+   echo "⚠️ AWS SSO session expired or not found. Attempting to refresh..."
+   aws sso login --profile "${PROFILE}"
 
-    if ! aws sts get-caller-identity --profile "${PROFILE}" > /dev/null 2>&1; then
-        echo "❌ AWS login failed. Please check your configuration. Aborting."
-        exit 1
-    fi
-    echo "✅ AWS login successful."
+   # Final check after login attempt
+   if ! aws sts get-caller-identity --profile "${PROFILE}" > /dev/null 2>&1; then
+       echo "❌ AWS login failed. Please check your configuration. Aborting."
+       exit 1
+   fi
+   echo "✅ AWS login successful."
 else
-    echo "✅ AWS SSO session is active."
+   echo "✅ AWS SSO session is active."
 fi
 
 # Get AWS Account ID for constructing resource names if needed

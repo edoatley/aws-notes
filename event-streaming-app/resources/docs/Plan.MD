@@ -32,12 +32,20 @@ This document outlines the plan to enhance the UK TV Guide application, focusing
 - [x] Review the current `event-streaming-app/src/web/index.html` and `event-streaming-app/src/web/app.js` for styling and layout improvements.
 - [x] Apply CSS and HTML modifications to enhance the visual appeal of the application, including the display of titles and recommendations.
 - [x] Separate the preferences and titles/recommendations and have a menu to switch between them
-- [ ] Check the web front end seems correct
+- [x] Check the web front end seems correct
   - [x] Ensure that the preferences screen shows the currently selected sources and genres as checked. 
   - [x] Improve the UI so that checked preferences are in a seperate section at the top and ones you can add are below  
 
 ### Phase 4: Admin Screen Design and Implementation (Deferred)
 - [ ] **Design:** Plan the layout and functionality of the admin screen in Architect mode.
+  - [ ] Function to allow triggering of Reference data refresh
+  - [ ] Function to allow triggering of Title data refresh
+  - [ ] Screen with the ability to summarise Dynamo data like [dynamodb_inspector.sh](../scripts/dynamodb_inspector.sh)
+  - [ ] Function to trigger Enrichment for all unenriched titles
+  - [ ] Other abilities we require...
+- [ ] New user to login as Security Admin and only user with access to admin screen
+  - [ ] Create new user
+  - [ ] Consider if the webpage content needs to be protected in some way
 - [ ] **Implement:** Develop the admin screen UI and backend integration.
 
 ### Phase 6: Testing improvements

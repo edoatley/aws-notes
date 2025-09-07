@@ -194,6 +194,7 @@ Resources:
                 - dynamodb:Query
                 - dynamodb:GetItem
                 - dynamodb:BatchWriteItem
+                - dynamodb:BatchGetItem
                 - dynamodb:Scan
               Resource: !Ref ProgramDataTableArn
       Environment:
