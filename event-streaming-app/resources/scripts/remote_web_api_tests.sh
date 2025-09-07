@@ -116,6 +116,13 @@ ID_TOKEN=$AUTH_RESPONSE
 log "Successfully authenticated and obtained ID token."
 info "Cognito returned a valid JWT for the test user."
 
+# Step 3.5: Save original preferences and test titles with them
+log "Step 3.5: Fetching original preferences to test with and restore later..."
+ORIGINAL_PREFS=$(api_curl "GET" "/preferences" "" "true")
+ORIGINAL_SOURCES_COUNT=$(echo "$ORIGINAL_PREFS" | jq '.sources | length')
+ORIGINAL_GENRES_COUNT=$(echo "$ORIGINAL_PREFS" | jq '.genres | length')
+log "Found ${ORIGINAL_SOURCES_COUNT} sources and ${ORIGINAL_GENRES_COUNT} genres in original preferences."
+
 # Step 4: Run API Tests
 log "Step 4: Starting API endpoint tests..."
 
@@ -156,6 +163,25 @@ log "GET /genres returned a valid JSON array."
 info "Response is a JSON array with ${GENRES_COUNT} items."
 FIRST_GENRE_ID=$(echo "$GENRES_RESPONSE" | jq -r '.[0].id // empty')
 
+# --- Test Protected Endpoints (Phase 1: With existing preferences) ---
+log "Testing GET /titles with original preferences..."
+TITLES_RESPONSE=$(api_curl "GET" "/titles" "" "true")
+if ! echo "$TITLES_RESPONSE" | jq -e 'type == "array"' > /dev/null; then
+    error "GET /titles did not return a JSON array. Response: $TITLES_RESPONSE"
+fi
+TITLES_COUNT=$(echo "$TITLES_RESPONSE" | jq 'length')
+log "GET /titles returned a valid JSON array."
+info "Found ${TITLES_COUNT} titles based on original user preferences."
+
+log "Testing GET /recommendations with original preferences..."
+RECOMMENDATIONS_RESPONSE=$(api_curl "GET" "/recommendations" "" "true")
+if ! echo "$RECOMMENDATIONS_RESPONSE" | jq -e 'type == "array"' > /dev/null; then
+    error "GET /recommendations did not return a JSON array. Response: $RECOMMENDATIONS_RESPONSE"
+fi
+RECOMMENDATIONS_COUNT=$(echo "$RECOMMENDATIONS_RESPONSE" | jq 'length')
+log "GET /recommendations returned a valid JSON array."
+info "Found ${RECOMMENDATIONS_COUNT} recommendations based on original user preferences."
+
 # --- Test Protected Endpoints ---
 log "Testing GET /preferences..."
 PREFS_RESPONSE=$(api_curl "GET" "/preferences" "" "true")
@@ -191,30 +217,11 @@ else
     info "GET /preferences returned the updated source and genre IDs."
 fi
 
-log "Testing GET /titles..."
-TITLES_RESPONSE=$(api_curl "GET" "/titles" "" "true")
-if ! echo "$TITLES_RESPONSE" | jq -e 'type == "array"' > /dev/null; then
-    error "GET /titles did not return a JSON array. Response: $TITLES_RESPONSE"
-fi
-TITLES_COUNT=$(echo "$TITLES_RESPONSE" | jq 'length')
-log "GET /titles returned a valid JSON array."
-info "Found ${TITLES_COUNT} titles based on user preferences."
-
-log "Testing GET /recommendations..."
-RECOMMENDATIONS_RESPONSE=$(api_curl "GET" "/recommendations" "" "true")
-if ! echo "$RECOMMENDATIONS_RESPONSE" | jq -e 'type == "array"' > /dev/null; then
-    error "GET /recommendations did not return a JSON array. Response: $RECOMMENDATIONS_RESPONSE"
-fi
-RECOMMENDATIONS_COUNT=$(echo "$RECOMMENDATIONS_RESPONSE" | jq 'length')
-log "GET /recommendations returned a valid JSON array."
-info "Found ${RECOMMENDATIONS_COUNT} recommendations based on user preferences."
-
 # --- Cleanup ---
-log "Cleaning up: Resetting user preferences..."
-RESET_PAYLOAD='{"sources": [], "genres": []}'
-api_curl "PUT" "/preferences" "$RESET_PAYLOAD" "true" > /dev/null
-log "User preferences reset."
-info "Sent empty arrays for sources and genres to /preferences."
+log "Cleaning up: Restoring original user preferences..."
+api_curl "PUT" "/preferences" "$ORIGINAL_PREFS" "true" > /dev/null
+log "Original user preferences restored."
+info "Sent back ${ORIGINAL_SOURCES_COUNT} sources and ${ORIGINAL_GENRES_COUNT} genres."
 
 echo ""
 echo "🎉 All API tests passed successfully! 🎉"

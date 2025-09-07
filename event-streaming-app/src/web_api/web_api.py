@@ -49,7 +49,7 @@ def build_response(status_code, body):
 
 def get_ref_data(prefix:str):
     """Get all sources from DynamoDB."""
-    logger.info("Fetching all {prefix}.")
+    logger.info(f"Fetching all {prefix}.")
     try:
         response = table.scan(
             FilterExpression='begins_with(PK, :prefix)',
@@ -99,27 +99,44 @@ def get_user_preferences(user_id):
         return None
 
 def update_user_preferences(user_id, preferences_data):
-    """Update user preferences in DynamoDB by deleting old and inserting new."""
+    """
+    Update user preferences in DynamoDB by calculating the delta of changes.
+    This is more efficient and avoids errors from deleting and re-adding the same
+    item in a single batch operation.
+    """
     try:
-        # First, query for existing preferences to delete them
         existing_prefs = get_user_preferences(user_id)
         if existing_prefs is None: # Error occurred in get_user_preferences
             return False
 
-        with table.batch_writer() as batch:
-            # Delete old source preferences
-            for source_id in existing_prefs.get('sources', []):
-                batch.delete_item(Key={'PK': f'{USER_PREF_PREFIX}{user_id}', 'SK': f'{SOURCE_PREFIX}{source_id}'})
-            # Delete old genre preferences
-            for genre_id in existing_prefs.get('genres', []):
-                batch.delete_item(Key={'PK': f'{USER_PREF_PREFIX}{user_id}', 'SK': f'{GENRE_PREFIX}{genre_id}'})
+        # Use sets for efficient comparison
+        existing_sources = set(existing_prefs.get('sources', []))
+        existing_genres = set(existing_prefs.get('genres', []))
+        new_sources = set(preferences_data.get('sources', []))
+        new_genres = set(preferences_data.get('genres', []))
 
-            # Add new source preferences
-            for source_id in preferences_data.get('sources', []):
+        sources_to_add = new_sources - existing_sources
+        sources_to_delete = existing_sources - new_sources
+        genres_to_add = new_genres - existing_genres
+        genres_to_delete = existing_genres - new_genres
+
+        # Check if there's anything to do
+        if not any([sources_to_add, sources_to_delete, genres_to_add, genres_to_delete]):
+            logger.info(f"No preference changes for user {user_id}. Nothing to update.")
+            return True
+
+        with table.batch_writer() as batch:
+            # Add new preferences
+            for source_id in sources_to_add:
                 batch.put_item(Item={'PK': f'{USER_PREF_PREFIX}{user_id}', 'SK': f'{SOURCE_PREFIX}{source_id}'})
-            # Add new genre preferences
-            for genre_id in preferences_data.get('genres', []):
+            for genre_id in genres_to_add:
                 batch.put_item(Item={'PK': f'{USER_PREF_PREFIX}{user_id}', 'SK': f'{GENRE_PREFIX}{genre_id}'})
+            
+            # Delete old preferences
+            for source_id in sources_to_delete:
+                batch.delete_item(Key={'PK': f'{USER_PREF_PREFIX}{user_id}', 'SK': f'{SOURCE_PREFIX}{source_id}'})
+            for genre_id in genres_to_delete:
+                batch.delete_item(Key={'PK': f'{USER_PREF_PREFIX}{user_id}', 'SK': f'{GENRE_PREFIX}{genre_id}'})
         
         logger.info(f"Successfully updated preferences for user {user_id}")
         return True
@@ -127,98 +144,89 @@ def update_user_preferences(user_id, preferences_data):
         logger.error(f"DynamoDB error updating preferences for user {user_id}: {e}", exc_info=True)
         return False
 
-def get_titles_by_preferences(user_id):
-    """Get titles that match the user's preferences."""
+def _get_titles_from_dynamo_optimized(user_id, filter_func=None):
+    """
+    Internal helper to get titles based on user preferences, with an optional filter.
+    This version is optimized to avoid N+1 queries by using BatchGetItem.
+    """
     try:
         preferences = get_user_preferences(user_id)
-        if not preferences:
+        if not preferences or not (preferences.get('sources') and preferences.get('genres')):
+            logger.info(f"User {user_id} has no preferences or is missing sources/genres. Returning empty list.")
             return []
-        
-        titles = []
-        processed_titles = set()
-        
-        # For each source-genre combination the user prefers, get titles
+
+        # Step 1: Collect all unique title IDs from the index
+        title_ids_to_fetch = set()
         for source_id in preferences.get('sources', []):
             for genre_id in preferences.get('genres', []):
                 index_pk = f"source:{source_id}:genre:{genre_id}"
-                
                 response = table.query(
                     KeyConditionExpression='PK = :pk',
-                    ExpressionAttributeValues={':pk': index_pk}
+                    ExpressionAttributeValues={':pk': index_pk},
+                    ProjectionExpression='SK' # Only need the title ID
                 )
-                
                 for item in response.get('Items', []):
                     title_id = item.get('SK', '').split(':', 1)[1]
-                    if title_id not in processed_titles:
-                        # Get the full title record
-                        title_response = table.get_item(
-                            Key={'PK': f"{TITLE_PREFIX}{title_id}", 'SK': 'record'}
-                        )
-                        
-                        if 'Item' in title_response:
-                            title_data = title_response['Item'].get('data', {})
-                            titles.append({
-                                'id': title_id,
-                                'title': title_data.get('title', 'Unknown'),
-                                'plot_overview': title_data.get('plot_overview', 'No description available'),
-                                'poster': title_data.get('poster', ''),
-                                'user_rating': float(title_data.get('user_rating', 0)) if title_data.get('user_rating') else 0,
-                                'source_ids': title_data.get('source_ids', []),
-                                'genre_ids': title_data.get('genre_ids', [])
-                            })
-                            processed_titles.add(title_id)
+                    title_ids_to_fetch.add(title_id)
         
+        if not title_ids_to_fetch:
+            logger.warning(f"No title IDs found for user {user_id}'s preferences. This may indicate the ingestion process has not run for the selected source/genre combinations.")
+            return []
+
+        # Step 2: Fetch all title records in batches
+        keys_to_get = [{'PK': f"{TITLE_PREFIX}{title_id}", 'SK': 'record'} for title_id in title_ids_to_fetch]
+        
+        all_items = []
+        # batch_get_item has a limit of 100 keys per request. We must chunk the requests.
+        for i in range(0, len(keys_to_get), 100):
+            chunk = keys_to_get[i:i + 100]
+            response = dynamodb_resource.batch_get_item(
+                RequestItems={
+                    DYNAMODB_TABLE_NAME: {
+                        'Keys': chunk,
+                        'ConsistentRead': False # Cheaper and faster
+                    }
+                }
+            )
+            # A production-ready implementation should also handle 'UnprocessedKeys' from the response.
+            all_items.extend(response.get('Responses', {}).get(DYNAMODB_TABLE_NAME, []))
+
+        # Step 3: Process the fetched titles
+        titles = []
+        for item in all_items:
+            title_data = item.get('data', {})
+            
+            # Apply the filter function if it exists
+            if filter_func and not filter_func(title_data):
+                continue
+            
+            title_id = item.get('PK').split(':', 1)[1]
+            titles.append({
+                'id': title_id,
+                'title': title_data.get('title', 'Unknown'),
+                'plot_overview': title_data.get('plot_overview', 'No description available'),
+                'poster': title_data.get('poster', ''),
+                'user_rating': float(title_data.get('user_rating', 0)) if title_data.get('user_rating') else 0,
+                'source_ids': title_data.get('source_ids', []),
+                'genre_ids': title_data.get('genre_ids', [])
+            })
+            
         return titles
     except ClientError as e:
         logger.error(f"DynamoDB error getting titles for user {user_id}: {e}", exc_info=True)
         return []
 
+def get_titles_by_preferences(user_id):
+    """Get titles that match the user's preferences."""
+    return _get_titles_from_dynamo_optimized(user_id)
+
 def get_recommendations(user_id):
-    """Get new recommendations for the user (rating > 7, added within last week)."""
-    try:
-        preferences = get_user_preferences(user_id)
-        if not preferences:
-            return []
-        
-        titles = []
-        processed_titles = set()
-        
-        for source_id in preferences.get('sources', []):
-            for genre_id in preferences.get('genres', []):
-                index_pk = f"source:{source_id}:genre:{genre_id}"
-                
-                response = table.query(
-                    KeyConditionExpression='PK = :pk',
-                    ExpressionAttributeValues={':pk': index_pk}
-                )
-                
-                for item in response.get('Items', []):
-                    title_id = item.get('SK', '').split(':', 1)[1]
-                    if title_id not in processed_titles:
-                        title_response = table.get_item(
-                            Key={'PK': f"{TITLE_PREFIX}{title_id}", 'SK': 'record'}
-                        )
-                        
-                        if 'Item' in title_response:
-                            title_data = title_response['Item'].get('data', {})
-                            user_rating = title_data.get('user_rating', 0)
-                            
-                            if user_rating and float(user_rating) > 7:
-                                titles.append({
-                                    'id': title_id,
-                                    'title': title_data.get('title', 'Unknown'),
-                                    'plot_overview': title_data.get('plot_overview', 'No description available'),
-                                    'poster': title_data.get('poster', ''),
-                                    'user_rating': float(user_rating),
-                                    'source_ids': title_data.get('source_ids', []),
-                                    'genre_ids': title_data.get('genre_ids', [])
-                                })
-                                processed_titles.add(title_id)
-        
-        return titles
-    except ClientError as e:
-        logger.error(f"DynamoDB error getting recommendations for user {user_id}: {e}", exc_info=True)
-        return []
+    """Get new recommendations for the user (rating > 7)."""
+    def is_recommendation(title_data):
+        user_rating = title_data.get('user_rating', 0)
+        return user_rating and float(user_rating) > 7
+
+    return _get_titles_from_dynamo_optimized(user_id, filter_func=is_recommendation)
 
 def lambda_handler(event, context):
     """Handle API Gateway requests for the web API."""

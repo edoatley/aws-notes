@@ -27,17 +27,20 @@ This document outlines the plan to enhance the UK TV Guide application, focusing
 - [x] Verify that the web front end (`event-streaming-app/src/web/index.html.py`) displays the data correctly.
 - [x] Create API Key for web API
 - [x] Create tests to validate the web API functionality.
-- [ ] Check the web front end seems correct
 
-### Phase 3: Admin Screen Design and Implementation (Deferred)
+### Phase 3: Web UI Enhancements
+- [x] Review the current `event-streaming-app/src/web/index.html` and `event-streaming-app/src/web/app.js` for styling and layout improvements.
+- [x] Apply CSS and HTML modifications to enhance the visual appeal of the application, including the display of titles and recommendations.
+- [x] Separate the preferences and titles/recommendations and have a menu to switch between them
+- [ ] Check the web front end seems correct
+  - [x] Ensure that the preferences screen shows the currently selected sources and genres as checked. 
+  - [x] Improve the UI so that checked preferences are in a seperate section at the top and ones you can add are below  
+
+### Phase 4: Admin Screen Design and Implementation (Deferred)
 - [ ] **Design:** Plan the layout and functionality of the admin screen in Architect mode.
 - [ ] **Implement:** Develop the admin screen UI and backend integration.
 
-### Phase 4: Web UI Enhancements
-- [ ] Review the current `event-streaming-app/src/web/index.html` and `event-streaming-app/src/web/app.js` for styling and layout improvements.
-- [ ] Apply CSS and HTML modifications to enhance the visual appeal of the application, including the display of titles and recommendations.
-
-### Phase 5: Testing improvements
+### Phase 6: Testing improvements
 - [ ] **Robust automated tests:** Enhance the bespoke testing approach with a test pack that validates the deployed application.
 
 ## Tracking Progress

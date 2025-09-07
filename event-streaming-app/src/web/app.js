@@ -30,23 +30,60 @@ let sources = [];
 let genres = [];
 let isAppInitialized = false;
 
-function startApp() {
+async function startApp() {
     if (isAppInitialized) return;
     isAppInitialized = true;
 
     console.log("Authenticated: Starting application...");
     setupAppEventListeners();
-
-    loadSources();
-    loadGenres();
-    loadUserPreferences();
+    
+    // Set the default page view
+    showPage('titles');
+    
+    // Fetch all reference data first. This prevents a race condition where
+    // we try to check preference boxes that haven't been rendered yet.
+    await Promise.all([loadSources(), loadGenres()]);
+    
+    // Then fetch user preferences, which will trigger the rendering of the preferences page.
+    await loadUserPreferences();
+    
+    // Now load the content.
     loadTitles();
+}
+
+function showPage(pageName) {
+    // Hide all pages
+    document.getElementById('titlesPage').style.display = 'none';
+    document.getElementById('preferencesPage').style.display = 'none';
+
+    // Deactivate all nav links
+    document.getElementById('nav-titles').classList.remove('active');
+    document.getElementById('nav-preferences').classList.remove('active');
+
+    // Show the selected page and activate the nav link
+    if (pageName === 'titles') {
+        document.getElementById('titlesPage').style.display = 'block';
+        document.getElementById('nav-titles').classList.add('active');
+    } else if (pageName === 'preferences') {
+        document.getElementById('preferencesPage').style.display = 'block';
+        document.getElementById('nav-preferences').classList.add('active');
+    }
 }
 
 function setupAppEventListeners() {
     document.getElementById('updatePreferencesBtn').addEventListener('click', updatePreferences);
     document.getElementById('titles-tab').addEventListener('click', () => loadTitles());
     document.getElementById('recommendations-tab').addEventListener('click', () => loadRecommendations());
+
+    // Add navigation event listeners
+    document.getElementById('nav-titles').addEventListener('click', (e) => {
+        e.preventDefault();
+        showPage('titles');
+    });
+    document.getElementById('nav-preferences').addEventListener('click', (e) => {
+        e.preventDefault();
+        showPage('preferences');
+    });
 }
 
 async function makeApiRequest(path, method = 'GET', body = null) {
@@ -66,12 +103,22 @@ async function makeApiRequest(path, method = 'GET', body = null) {
 
         const response = await fetch(`${window.appConfig.ApiEndpoint}${path}`, options);
 
+        const contentType = response.headers.get("content-type");
+        const isJson = contentType && contentType.indexOf("application/json") !== -1;
+
         if (!response.ok) {
-            throw new Error(`API request failed with status ${response.status}`);
+            let errorBody = { message: `API request failed with status ${response.status}` };
+            if (isJson) {
+                try {
+                    errorBody = await response.json();
+                } catch (e) { /* Ignore if body isn't valid JSON */ }
+            }
+            const error = new Error(errorBody.error || errorBody.message || `API request failed with status ${response.status}`);
+            error.response = response; // Attach response for further inspection if needed
+            throw error;
         }
 
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") !== -1) {
+        if (isJson) {
             return await response.json();
         } else {
             return;
@@ -85,7 +132,6 @@ async function makeApiRequest(path, method = 'GET', body = null) {
 async function loadSources() {
     try {
         sources = await makeApiRequest('/sources');
-        renderSourcesList();
     } catch (error) {
         console.error('Error loading sources:', error);
     }
@@ -94,7 +140,6 @@ async function loadSources() {
 async function loadGenres() {
     try {
         genres = await makeApiRequest('/genres');
-        renderGenresList();
     } catch (error) {
         console.error('Error loading genres:', error);
     }
@@ -104,7 +149,7 @@ async function loadUserPreferences() {
     try {
         const preferences = await makeApiRequest('/preferences');
         if (preferences) {
-            updatePreferencesUI(preferences);
+            renderPreferences(sources, genres, preferences);
         }
     } catch (error) {
         console.error('Error loading user preferences:', error);
@@ -118,10 +163,12 @@ async function updatePreferences() {
     try {
         await makeApiRequest('/preferences', 'PUT', { sources: selectedSources, genres: selectedGenres });
         alert('Preferences updated successfully!');
+        // Re-render the preferences UI to move items between selected/available lists
+        await loadUserPreferences();
         loadTitles();
         loadRecommendations();
     } catch (error) {
-        alert('Error updating preferences');
+        alert(`Error updating preferences: ${error.message}`);
     }
 }
 
@@ -149,44 +196,39 @@ async function loadRecommendations() {
     }
 }
 
-function renderSourcesList() {
-    const container = document.getElementById('sourcesList');
-    if(container) container.innerHTML = sources.map(source => `
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="source" value="${source.id}" id="source_${source.id}">
-            <label class="form-check-label" for="source_${source.id}">
-                ${source.name}
-            </label>
-        </div>
-    `).join('');
-}
+function renderPreferences(allSources, allGenres, userPreferences) {
+    const renderList = (items, selectedIds, selectedContainerId, availableContainerId, type) => {
+        const selectedContainer = document.getElementById(selectedContainerId);
+        const availableContainer = document.getElementById(availableContainerId);
 
-function renderGenresList() {
-    const container = document.getElementById('genresList');
-    if(container) container.innerHTML = genres.map(genre => `
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="genre" value="${genre.id}" id="genre_${genre.id}">
-            <label class="form-check-label" for="genre_${genre.id}">
-                ${genre.name}
-            </label>
-        </div>
-    `).join('');
-}
+        if (!selectedContainer || !availableContainer) return;
 
-function updatePreferencesUI(preferences) {
-    if (!preferences) return;
-    if (preferences.sources) {
-        preferences.sources.forEach(sourceId => {
-            const checkbox = document.getElementById(`source_${sourceId}`);
-            if (checkbox) checkbox.checked = true;
+        let selectedHtml = '';
+        let availableHtml = '';
+
+        items.forEach(item => {
+            const isSelected = selectedIds.includes(item.id.toString());
+            const checkboxHtml = `
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="${type}" value="${item.id}" id="${type}_${item.id}" ${isSelected ? 'checked' : ''}>
+                    <label class="form-check-label" for="${type}_${item.id}">
+                        ${item.name}
+                    </label>
+                </div>
+            `;
+            if (isSelected) {
+                selectedHtml += checkboxHtml;
+            } else {
+                availableHtml += checkboxHtml;
+            }
         });
-    }
-    if (preferences.genres) {
-        preferences.genres.forEach(genreId => {
-            const checkbox = document.getElementById(`genre_${genreId}`);
-            if (checkbox) checkbox.checked = true;
-        });
-    }
+
+        selectedContainer.innerHTML = selectedHtml || `<p class="text-muted small">No ${type}s selected.</p>`;
+        availableContainer.innerHTML = availableHtml || `<p class="text-muted small">All available ${type}s are selected.</p>`;
+    };
+
+    renderList(allSources, userPreferences.sources || [], 'selectedSourcesList', 'availableSourcesList', 'source');
+    renderList(allGenres, userPreferences.genres || [], 'selectedGenresList', 'availableGenresList', 'genre');
 }
 
 function renderTitles(titles, containerId) {
@@ -243,7 +285,7 @@ function hideLoading(elementId) {
     if (el) el.style.display = 'none';
 }
 
-function initializeApp() {
+async function initializeApp() {
     const path = window.location.pathname;
 
     if (path.endsWith('login.html')) {
@@ -257,6 +299,7 @@ function initializeApp() {
     const loginBtn = document.getElementById('loginBtn');
     const logoutBtn = document.getElementById('logoutBtn');
     const authSection = document.getElementById('authSection');
+    const mainNav = document.getElementById('mainNav');
     const mainContent = document.getElementById('mainContent');
 
     if (!loginBtn) return; // We are on a page without login buttons
@@ -282,20 +325,23 @@ function initializeApp() {
             mainContent.style.display = 'block';
             loginBtn.style.display = 'none';
             logoutBtn.style.display = 'block';
+            if (mainNav) mainNav.style.display = 'flex';
             window.idToken = stored_token;
-            startApp();
+            await startApp();
         } else {
             localStorage.removeItem('id_token');
             authSection.style.display = 'block';
             mainContent.style.display = 'none';
             loginBtn.style.display = 'block';
             logoutBtn.style.display = 'none';
+            if (mainNav) mainNav.style.display = 'none';
         }
     } else {
         authSection.style.display = 'block';
         mainContent.style.display = 'none';
         loginBtn.style.display = 'block';
         logoutBtn.style.display = 'none';
+        if (mainNav) mainNav.style.display = 'none';
     }
 }
 

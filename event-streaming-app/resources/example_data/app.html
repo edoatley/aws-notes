@@ -53,15 +53,6 @@
         <a class="navbar-brand" href="#">
             <i class="fas fa-tv me-2"></i>UK TV Guide
         </a>
-        <!-- Main Navigation (for authenticated users) -->
-        <ul class="navbar-nav me-auto mb-2 mb-lg-0" id="mainNav" style="display: none;">
-            <li class="nav-item">
-                <a class="nav-link active" href="#" id="nav-titles">Titles</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#" id="nav-preferences">Preferences</a>
-            </li>
-        </ul>
         <div class="navbar-nav ms-auto">
             <button id="loginBtn" class="btn btn-outline-light me-2">
                 <i class="fas fa-sign-in-alt me-1"></i>Login
@@ -91,85 +82,80 @@
 
 <!-- Main Content -->
 <div id="mainContent" class="main-content container mt-4">
-
-    <!-- Titles Page -->
-    <div id="titlesPage">
-        <!-- Navigation Tabs -->
-        <ul class="nav nav-tabs mb-4" id="contentTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="titles-tab" data-bs-toggle="tab" data-bs-target="#titles" type="button" role="tab">
-                    <i class="fas fa-list me-1"></i>All Titles
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="recommendations-tab" data-bs-toggle="tab" data-bs-target="#recommendations" type="button" role="tab">
-                    <i class="fas fa-star me-1"></i>Recommendations
-                </button>
-            </li>
-        </ul>
-
-        <!-- Tab Content -->
-        <div class="tab-content" id="contentTabContent">
-            <!-- Titles Tab -->
-            <div class="tab-pane fade show active" id="titles" role="tabpanel">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4>Available Titles</h4>
-                    <div class="loading" id="titlesLoading">
-                        <div class="spinner-border spinner-border-sm" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
-                </div>
-                <div id="titlesContainer" class="row"></div>
+    <!-- User Preferences Section -->
+    <div class="preferences-section">
+        <h4><i class="fas fa-cog me-2"></i>Your Preferences</h4>
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Streaming Sources</h6>
+                <div id="sourcesList" class="mb-3"></div>
             </div>
-
-            <!-- Recommendations Tab -->
-            <div class="tab-pane fade" id="recommendations" role="tabpanel">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4>New Recommendations</h4>
-                    <div class="loading" id="recommendationsLoading">
-                        <div class="spinner-border spinner-border-sm" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
-                </div>
-                <div id="recommendationsContainer" class="row"></div>
+            <div class="col-md-6">
+                <h6>Genres</h6>
+                <div id="genresList" class="mb-3"></div>
             </div>
         </div>
+        <button id="updatePreferencesBtn" class="btn btn-primary">
+            <i class="fas fa-save me-1"></i>Update Preferences
+        </button>
     </div>
 
-    <!-- Preferences Page -->
-    <div id="preferencesPage" style="display: none;">
-        <div class="preferences-section">
-            <h4><i class="fas fa-cog me-2"></i>Your Preferences</h4>
-            <div class="row">
-                <div class="col-md-6">
-                    <h6>Streaming Sources</h6>
-                    <div class="mb-3">
-                        <strong>Selected:</strong>
-                        <div id="selectedSourcesList"></div>
-                    </div>
-                    <hr>
-                    <div class="mb-3">
-                        <strong>Available to add:</strong>
-                        <div id="availableSourcesList"></div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <h6>Genres</h6>
-                    <div class="mb-3">
-                        <strong>Selected:</strong>
-                        <div id="selectedGenresList"></div>
-                    </div>
-                    <hr>
-                    <div class="mb-3">
-                        <strong>Available to add:</strong>
-                        <div id="availableGenresList"></div>
+    <!-- Navigation Tabs -->
+    <ul class="nav nav-tabs mb-4" id="contentTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="titles-tab" data-bs-toggle="tab" data-bs-target="#titles" type="button" role="tab">
+                <i class="fas fa-list me-1"></i>All Titles
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="recommendations-tab" data-bs-toggle="tab" data-bs-target="#recommendations" type="button" role="tab">
+                <i class="fas fa-star me-1"></i>Recommendations
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content" id="contentTabContent">
+        <!-- Titles Tab -->
+        <div class="tab-pane fade show active" id="titles" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4>Available Titles</h4>
+                <div class="loading" id="titlesLoading">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
                     </div>
                 </div>
             </div>
-            <button id="updatePreferencesBtn" class="btn btn-primary">
-                <i class="fas fa-save me-1"></i>Update Preferences
+            <div id="titlesContainer" class="row"></div>
+        </div>
+
+        <!-- Recommendations Tab -->
+        <div class="tab-pane fade" id="recommendations" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4>New Recommendations</h4>
+                <div class="loading" id="recommendationsLoading">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <div id="recommendationsContainer" class="row"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Admin Controls Section -->
+<div id="adminSection" class="admin-section container mt-4">
+    <h4><i class="fas fa-tools me-2"></i>Admin Controls</h4>
+    <div class="row">
+        <div class="col-md-6">
+            <button id="refreshReferenceDataBtn" class="btn btn-outline-primary me-2">
+                <i class="fas fa-sync me-1"></i>Refresh Sources & Genres
+            </button>
+        </div>
+        <div class="col-md-6">
+            <button id="triggerTitleIngestionBtn" class="btn btn-outline-secondary">
+                <i class="fas fa-play me-1"></i>Trigger Title Ingestion
             </button>
         </div>
     </div>
