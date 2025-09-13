@@ -1,97 +1,94 @@
 import json
 import boto3
 import os
+import uuid # Import uuid for job ID generation
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 lambda_client = boto3.client('lambda')
 
-# Get table names from environment variables or hardcode if necessary
-# It's better to pass these via CloudFormation parameters or environment variables
-# For now, let's assume they are known or can be discovered.
-# Example:
-# SOURCES_TABLE_NAME = os.environ.get('SOURCES_TABLE_NAME', 'SourcesTable')
-# TITLES_TABLE_NAME = os.environ.get('TITLES_TABLE_NAME', 'TitlesTable')
+# --- Configuration ---
+# Table names identified from CloudFormation
+# Note: The design doc mentions SourcesTable and TitlesTable for summary,
+# but only ProgrammesTable is explicitly defined in the root template.
+# We will use ProgrammesTable for now. If other tables are needed for summary,
+# they would need to be defined or discovered.
+PROGRAMMES_TABLE_NAME = os.environ.get('PROGRAMMES_TABLE_NAME', 'UKTVProgrammes') # Default from CloudFormation parameter
 
-# Placeholder for table names - these should be dynamically configured
-# In a real scenario, these would be passed via CloudFormation parameters
-# or discovered via AWS SDK calls if possible.
-# For now, let's use common names that might exist in the project.
-# We will need to confirm these table names from the CloudFormation template later.
-TABLE_NAMES = {
-    "reference": "SourcesTable", # Placeholder
-    "titles": "TitlesTable",     # Placeholder
-    "user_preferences": "UserPreferencesTable" # Placeholder
-}
-
-# Lambda function names for triggering other functions
-# These should also be dynamically configured via CloudFormation
+# Lambda function names identified from nested CloudFormation templates
 LAMBDA_FUNCTIONS = {
-    "reference_data_refresh": "periodic_reference_data_lambda", # Placeholder
-    "title_data_refresh": "userprefs_title_ingestion_lambda",   # Placeholder
-    "title_enrichment": "title_enrichment_lambda"               # Placeholder
+    "reference_data_refresh": "PeriodicUKTVReferenceFunction",
+    "title_data_refresh": "PeriodicUKTitlesForUserPrefsFunction",
+    "title_enrichment": "TitleEnrichmentFunction"
 }
+
+# --- Helper Functions ---
 
 def get_dynamodb_summary():
     """
     Retrieves summary information for DynamoDB tables.
+    Currently focuses on ProgrammesTable.
     """
     summary = {"tables": []}
     try:
-        # List all tables in the region (requires dynamodb:ListTables permission)
-        # This might be too broad if there are many tables.
-        # A more targeted approach would be to use table names from CloudFormation.
-        # For now, let's assume we know the relevant table names.
-        
-        for key, table_name in TABLE_NAMES.items():
-            table = dynamodb.Table(table_name)
-            response = table.item_count
-            item_count = response.get('ItemCount')
-            
-            # Getting table size is not directly available via item_count.
-            # We might need to use table.describe_table() for more details,
-            # but item_count is a good start.
-            # For a more accurate size, one might need to scan or use CloudWatch metrics.
-            # For this design, we'll stick to item_count as a primary metric.
-            
-            summary["tables"].append({
-                "name": table_name,
-                "item_count": item_count,
-                # "size_bytes": "N/A" # Placeholder for size, as it's not directly available here
-            })
+        # Get item count for the ProgrammesTable
+        table = dynamodb.Table(PROGRAMMES_TABLE_NAME)
+        item_count_response = table.item_count
+        item_count = item_count_response.get('ItemCount')
+
+        # Getting table size is not directly available via item_count.
+        # For a more accurate size, one might need to scan or use CloudWatch metrics.
+        # For this design, we'll stick to item_count as a primary metric.
+        # If table size is critical, further implementation is needed.
+
+        summary["tables"].append({
+            "name": PROGRAMMES_TABLE_NAME,
+            "item_count": item_count,
+            "size_bytes": "N/A" # Placeholder for size, as it's not directly available here
+        })
         summary["message"] = "DynamoDB data summary retrieved successfully."
+        return summary, 200
+    except dynamodb.meta.client.exceptions.ResourceNotFoundException:
+        error_message = f"DynamoDB table '{PROGRAMMES_TABLE_NAME}' not found."
+        print(f"Error: {error_message}")
+        return {"message": error_message, "tables": []}, 404
     except Exception as e:
-        print(f"Error retrieving DynamoDB summary: {e}")
-        # In a real scenario, you might want to return a more specific error
-        # or log this to CloudWatch.
-        return {
-            "message": f"Error retrieving DynamoDB summary: {str(e)}",
-            "tables": []
-        }, 500
-    return summary, 200
+        error_message = f"Error retrieving DynamoDB summary: {str(e)}"
+        print(f"Error: {error_message}")
+        return {"message": error_message, "tables": []}, 500
 
 def trigger_lambda_function(function_name, payload=None):
     """
-    Triggers another Lambda function asynchronously.
+    Triggers another Lambda function asynchronously and returns a job ID.
     """
+    job_id = str(uuid.uuid4()) # Generate a unique job ID
     try:
         if payload is None:
             payload = {}
         
+        # Add job_id to the payload for tracking if needed by the target function
+        payload['job_id'] = job_id
+
         response = lambda_client.invoke(
             FunctionName=function_name,
             InvocationType='Event',  # Asynchronous invocation
             Payload=json.dumps(payload)
         )
-        print(f"Successfully invoked Lambda function: {function_name}")
-        # The response for 'Event' invocation type is empty on success
-        return {"message": f"Lambda function '{function_name}' invoked successfully."}, 202
+        print(f"Successfully invoked Lambda function: {function_name} with job ID: {job_id}")
+        
+        # The response for 'Event' invocation type is empty on success,
+        # so we return the generated job_id.
+        return {"message": f"Lambda function '{function_name}' initiated.", "job_id": job_id}, 202
     except lambda_client.exceptions.ResourceNotFoundException:
-        print(f"Error: Lambda function '{function_name}' not found.")
-        return {"message": f"Error: Lambda function '{function_name}' not found."}, 404
+        error_message = f"Lambda function '{function_name}' not found."
+        print(f"Error: {error_message}")
+        return {"message": error_message}, 404
     except Exception as e:
-        print(f"Error invoking Lambda function {function_name}: {e}")
-        return {"message": f"Error invoking Lambda function {function_name}: {str(e)}"}, 500
+        error_message = f"Error invoking Lambda function {function_name}: {str(e)}"
+        print(f"Error: {error_message}")
+        return {"message": error_message}, 500
+
+# --- Main Handler ---
 
 def lambda_handler(event, context):
     """
@@ -106,32 +103,29 @@ def lambda_handler(event, context):
     # API Gateway proxy integration expects a specific response format
     # https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html#api-gateway-simple-proxy-for-lambda-output-format
     
+    response_body = {"message": "Not Found"}
+    status_code = 404
+    
     if http_method == 'POST':
         if path == '/admin/data/reference/refresh':
-            # Trigger reference data refresh
-            # We might need to pass specific payloads if the target lambda expects them
-            # For now, assuming an empty payload is sufficient for triggering.
             response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["reference_data_refresh"])
         elif path == '/admin/data/titles/refresh':
-            # Trigger title data refresh
             response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["title_data_refresh"])
         elif path == '/admin/data/titles/enrich':
-            # Trigger title enrichment
             response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["title_enrichment"])
         else:
-            response_body = {"message": "Not Found"}
+            response_body = {"message": f"POST request to unknown path: {path}"}
             status_code = 404
             
     elif http_method == 'GET':
         if path == '/admin/system/dynamodb/summary':
-            # Get DynamoDB summary
             response_body, status_code = get_dynamodb_summary()
         else:
-            response_body = {"message": "Not Found"}
+            response_body = {"message": f"GET request to unknown path: {path}"}
             status_code = 404
             
     else:
-        response_body = {"message": "Method Not Allowed"}
+        response_body = {"message": f"Unsupported HTTP method: {http_method}"}
         status_code = 405
 
     return {

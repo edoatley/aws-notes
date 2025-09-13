@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TV Guide Admin Panel</title>
+    <link rel="stylesheet" href="style.css"> <!-- Assuming a common CSS file -->
+</head>
+<body>
+    <header>
+        <h1>TV Guide Admin Panel</h1>
+        <div id="user-status"></div>
+        <button id="logout-button">Logout</button>
+    </header>
+
+    <main>
+        <section id="data-management">
+            <h2>Data Management</h2>
+            
+            <div class="admin-section">
+                <h3>Reference Data</h3>
+                <button id="refresh-reference-data">Refresh Reference Data</button>
+                <div id="reference-data-status" class="status-display"></div>
+                <div id="reference-data-logs" class="logs-details collapsible"></div>
+            </div>
+
+            <div class="admin-section">
+                <h3>Title Data</h3>
+                <button id="refresh-title-data">Refresh Title Data</button>
+                <div id="title-data-status" class="status-display"></div>
+                <div id="title-data-logs" class="logs-details collapsible"></div>
+            </div>
+
+            <div class="admin-section">
+                <h3>Title Enrichment</h3>
+                <button id="trigger-enrichment">Trigger Enrichment for Unenriched Titles</button>
+                <div id="enrichment-status" class="status-display"></div>
+                <div id="enrichment-logs" class="logs-details collapsible"></div>
+                <div id="unenriched-titles-count"></div>
+            </div>
+        </section>
+
+        <section id="system-status">
+            <h2>System Status</h2>
+            <div class="admin-section">
+                <h3>DynamoDB Summary</h3>
+                <button id="generate-dynamodb-summary">Generate Full Summary</button>
+                <div id="dynamodb-summary-output"></div>
+            </div>
+        </section>
+    </main>
+
+    <script src="config.js"></script> <!-- Assuming config.js holds API endpoint -->
+    <script src="admin.js"></script> <!-- Our new admin script -->
+</body>
+</html>

@@ -44,7 +44,7 @@ Resources:
                 Action:
                   - dynamodb:DescribeTable
                   - dynamodb:ListTables
-                Resource: "*" # Restrict to specific tables if possible
+                Resource: !Ref ProgrammesTableArn
         - PolicyName: AdminLambdaInvokeOtherLambdas
           PolicyDocument:
             Version: '2012-10-17'
