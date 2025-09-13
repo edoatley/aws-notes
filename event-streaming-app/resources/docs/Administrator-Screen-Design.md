@@ -130,3 +130,9 @@ The admin Lambda function will query DynamoDB to gather table metadata.
 *   **Making API Calls:** Use JavaScript (e.g., `fetch` API) for `POST` requests (refresh/trigger) and `GET` requests (summary).
 *   **User Feedback:** Provide clear messages for success, ongoing operations, and errors.
 *   **Frontend Protection:** Ensure admin-specific UI elements are only visible/interactive for authenticated "Security Admins".
+
+## 7. Testing plan
+
+*   **Testing user:** Create a new user `TestAdminUser` in Cloudformation like the current TestUser (test.user@example.com), use the email `admin.user@example.com`
+*   **Unit Tests:** - create simple unit tests using pytest to validate the admin API lambda function.
+*   **Integration Tests:** use a script like [remote_web_api_tests.sh](../scripts/remote_web_api_tests.sh) to test the deployed API via API Gateway

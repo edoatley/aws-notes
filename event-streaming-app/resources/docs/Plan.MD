@@ -14,9 +14,9 @@ This document outlines the plan to enhance the UK TV Guide application, focusing
 ## Detailed Plan
 
 ### Phase 1: Planning and Documentation
-- [ ] Create this `Plan.MD` document.
-- [ ] Review and refine existing requirements in `Event-Streaming.MD`.
-- [ ] Outline the structure and content for a new User Guide.
+- [x] Create this `Plan.MD` document.
+- [x] Review and refine existing requirements in `Event-Streaming.MD`.
+- [x] Outline the structure and content for a new User Guide.
 
 ### Phase 2: Backend Data Population and Verification
 - [x] Trigger `event-streaming-app/src/periodic_reference_data` to populate sources and genres in DynamoDB.
