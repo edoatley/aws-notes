@@ -3,44 +3,48 @@
 ## Table of contents
 
 <!-- TOC -->
-- [Event Streaming app](#event-streaming-app)
-  - [Table of contents](#table-of-contents)
-  - [Current Status \& Future Plan](#current-status--future-plan)
-    - [Completed Milestones:](#completed-milestones)
-    - [Next Steps \& Enhancements:](#next-steps--enhancements)
-  - [Target Architecture diagram](#target-architecture-diagram)
-  - [Step 1 - Initial set up](#step-1---initial-set-up)
-  - [Step 2 - Shared infrastructure set up](#step-2---shared-infrastructure-set-up)
-  - [Step 3 - Periodic Ingestion Lambda (basic deployment)](#step-3---periodic-ingestion-lambda-basic-deployment)
-  - [Step 4 - WatchMode initial integration](#step-4---watchmode-initial-integration)
-    - [Sources](#sources)
-    - [Genres](#genres)
-  - [Step 5 - SAM Project cleanup](#step-5---sam-project-cleanup)
-  - [Step 6 - Preferences API](#step-6---preferences-api)
-  - [Step 7 - Call API to get some shows for all known genres and source](#step-7---call-api-to-get-some-shows-for-all-known-genres-and-source)
-  - [Step 9 - read title data published to kinesis](#step-9---read-title-data-published-to-kinesis)
-  - [Step 10 - publish title data to kinesis](#step-10---publish-title-data-to-kinesis)
-    - [LocalStack setup](#localstack-setup)
-    - [LocalStack setup](#localstack-setup-1)
-    - [Specialist Test Script for Title Ingestion](#specialist-test-script-for-title-ingestion)
-  - [Step 11 - store title data to DynamoDB](#step-11---store-title-data-to-dynamodb)
-  - [Step 12 - enrich the stored title data in DynamoDB](#step-12---enrich-the-stored-title-data-in-dynamodb)
-  - [Step 13 - deploy to AWS and run an E2E test (taking cost safeguards)](#step-13---deploy-to-aws-and-run-an-e2e-test-taking-cost-safeguards)
-  - [Step 14 - add the EventBridge triggers](#step-14---add-the-eventbridge-triggers)
-  - [Step 15 - single page web application hosted on S3](#step-15---single-page-web-application-hosted-on-s3)
-    - [Testing approach](#testing-approach)
-  - [Step 16 - incorporate teh S3 file sync into the cloudformation stack](#step-16---incorporate-teh-s3-file-sync-into-the-cloudformation-stack)
-  - [Step 17 - schedule the API calls to get the shows and make it efficient](#step-17---schedule-the-api-calls-to-get-the-shows-and-make-it-efficient)
-  - [Cleanup](#cleanup)
-  - [User Guide Outline](#user-guide-outline)
-    - [1. Introduction](#1-introduction)
-    - [2. Getting Started](#2-getting-started)
-    - [3. Browsing Titles](#3-browsing-titles)
-    - [4. Recommendations](#4-recommendations)
-    - [5. Managing Preferences](#5-managing-preferences)
-    - [6. Admin Features (if applicable to end-users)](#6-admin-features-if-applicable-to-end-users)
-    - [7. Troubleshooting](#7-troubleshooting)
-    - [8. FAQ](#8-faq)
+* [Event Streaming app](#event-streaming-app)
+  * [Table of contents](#table-of-contents)
+  * [Current Status & Future Plan](#current-status--future-plan)
+    * [Completed Milestones:](#completed-milestones)
+    * [Next Steps & Enhancements:](#next-steps--enhancements)
+  * [Target Architecture diagram](#target-architecture-diagram)
+  * [Step 1 - Initial set up](#step-1---initial-set-up)
+  * [Step 2 - Shared infrastructure set up](#step-2---shared-infrastructure-set-up)
+  * [Step 3 - Periodic Ingestion Lambda (basic deployment)](#step-3---periodic-ingestion-lambda-basic-deployment)
+  * [Step 4 - WatchMode initial integration](#step-4---watchmode-initial-integration)
+    * [Sources](#sources)
+    * [Genres](#genres)
+  * [Step 5 - SAM Project cleanup](#step-5---sam-project-cleanup)
+  * [Step 6 - Preferences API](#step-6---preferences-api)
+  * [Step 7 - Call API to get some shows for all known genres and source](#step-7---call-api-to-get-some-shows-for-all-known-genres-and-source)
+  * [Step 9 - read title data published to kinesis](#step-9---read-title-data-published-to-kinesis)
+  * [Step 10 - publish title data to kinesis](#step-10---publish-title-data-to-kinesis)
+    * [LocalStack setup](#localstack-setup)
+    * [Specialist Test Script for Title Ingestion](#specialist-test-script-for-title-ingestion)
+  * [Step 11 - store title data to DynamoDB](#step-11---store-title-data-to-dynamodb)
+  * [Step 12 - enrich the stored title data in DynamoDB](#step-12---enrich-the-stored-title-data-in-dynamodb)
+  * [Step 13 - deploy to AWS and run an E2E test (taking cost safeguards)](#step-13---deploy-to-aws-and-run-an-e2e-test-taking-cost-safeguards)
+  * [Step 14 - add the EventBridge triggers](#step-14---add-the-eventbridge-triggers)
+  * [Step 15 - single page web application hosted on S3](#step-15---single-page-web-application-hosted-on-s3)
+    * [What's Been Added](#whats-been-added)
+    * [Deployment Steps](#deployment-steps)
+    * [Website Features](#website-features)
+  * [Step 16 - Administrator screen](#step-16---administrator-screen)
+    * [Admin Screen UI Design](#admin-screen-ui-design)
+      * [Header](#header)
+      * [Main Content Area](#main-content-area)
+        * [Data Management Section](#data-management-section)
+        * [System Status Section](#system-status-section)
+    * [Admin API Design](#admin-api-design)
+      * [Endpoints](#endpoints)
+    * [DynamoDB Data Summary Implementation Plan](#dynamodb-data-summary-implementation-plan)
+    * [Security Admin Implementation Plan](#security-admin-implementation-plan)
+    * [New Admin Lambda Function Scope and Responsibilities](#new-admin-lambda-function-scope-and-responsibilities)
+    * [Admin UI Integration Plan](#admin-ui-integration-plan)
+    * [Testing plan](#testing-plan)
+  * [Step 17 - schedule the API calls to get the shows and make it efficient](#step-17---schedule-the-api-calls-to-get-the-shows-and-make-it-efficient)
+  * [Cleanup](#cleanup)
 <!-- TOC -->
 
 ## Current Status & Future Plan
@@ -57,12 +61,10 @@ The project has made significant progress in establishing the backend data inges
 - [x] Add Google IdP federation: Google Identity Provider federation is integrated.
 - [x] Provide a single page web app user interface (a static website hosted on S3) and login with Google credentials.
 - [x] Extend the web app to query API Gateway endpoints to display the TV offerings, update user preferences, etc.
+- [x] Create Comprehensive User Guide.
 
 ### Next Steps & Enhancements:
-- [ ] **Improve Web UI Aesthetics:** Enhance the visual design and user experience of the web application.
 - [ ] **Implement Admin Screen:** Develop an administrative interface within the web UI to trigger backend data ingestion processes manually.
-- [ ] **Refine Application Requirements:** Document detailed functional and non-functional requirements.
-- [ ] **Create Comprehensive User Guide:** Develop a user guide for the web application.
 - [ ] **Robust automated tests:** enhance the bespoke testing approach with a test pack that validates the deployed application.
 
 ## Target Architecture diagram
@@ -71,8 +73,8 @@ The project has made significant progress in establishing the backend data inges
 graph TD
     subgraph "User Interaction"
         direction LR
-        User(fa:fa-user User) --> APIGW[/"API Gateway"/]
-        APIGW -- Authorizes with --> Cognito[/"Cognito User Pool"/]
+        User(fa:fa-user User) --> APIGW[/\"API Gateway\"/]
+        APIGW -- Authorizes with --> Cognito[/\"Cognito User Pool\"/]
         APIGW -- Invokes --> UserPrefsLambda[fa:fa-lambda UserPreferencesFunction]
     end
 
@@ -97,7 +99,7 @@ graph TD
     end
 
     subgraph "External Services"
-        WatchModeAPI[/"api.watchmode.com"/]
+        WatchModeAPI[/\"api.watchmode.com\"/]
     end
 
     %% --- Data & Event Flows ---
@@ -167,27 +169,6 @@ sam local invoke PeriodicDataIngestionFunction \
   --profile streaming
 ```
 
-which gave the expected output:
-
-```output
-Invoking app.lambda_handler (python3.9)                                                                                                                                                                                                                                                                                                                                                                                                   
-Unknown 404 - Unable to check if base image is current.                                                                                                                                                                                                                                                                                                                                                                                   
-                                                                                                                                                                                                                                                                                                                                                                                                                                          
-Possible incompatible Docker engine clone employed. Consider `--skip-pull-image` for improved speed, the tradeoff being not running the latest image.                                                                                                                                                                                                                                                                                     
-Removing rapid images for repo public.ecr.aws/sam/emulation-python3.9                                                                                                                                                                                                                                                                                                                                                                     
-Building image..........................
-Using local image: public.ecr.aws/lambda/python:3.9-rapid-x86_64.                                                                                                                                                                                                                                                                                                                                                                         
-                                                                                                                                                                                                                                                                                                                                                                                                                                          
-Mounting /Users/edoatley/source/aws-notes/event-streaming-app/src/userprefs_title_ingestion as /var/task:ro,delegated, inside runtime container                                                                                                                                                                                                                                                                                                  
-START RequestId: 82ff0db6-af9d-485d-b0d5-198c16ac06ce Version: $LATEST
-Received event: {"source": "aws.events", "detail-type": "Scheduled Event", "resources": ["arn:aws:events:eu-west-2:123456789012:rule/DailyUKTVDataIngestionTrigger"], "time": "2024-07-29T10:00:00Z"}
-Kinesis Stream Name from env: ProgrammeDataStream
-Successfully sent data to Kinesis. SequenceNumber: 49664244735039333844253464507911923352226958350235992098
-END RequestId: 46c18a47-e404-4000-b4c5-36f90cd87b0a
-REPORT RequestId: 46c18a47-e404-4000-b4c5-36f90cd87b0a  Init Duration: 0.04 ms  Duration: 365.61 ms     Billed Duration: 366 ms Memory Size: 256 MB     Max Memory Used: 256 MB 
-{"statusCode": 200, "body": "{\"message\": \"Data ingested successfully\", \"sequenceNumber\": \"49664244735039333844253464507911923352226958350235992098\"}"}
-```
-
 4. Deploy the lambda
 
 ```bash
@@ -195,55 +176,6 @@ REPORT RequestId: 46c18a47-e404-4000-b4c5-36f90cd87b0a  Init Duration: 0.04 ms  
 sam deploy --guided --profile streaming --capabilities CAPABILITY_NAMED_IAM
 # Thereafter can reference the config file
 sam deploy --profile streaming --capabilities CAPABILITY_NAMED_IAM
-```
-
-Which starts the deployment and we can confirm the changes:
-
-```output
-Initiating deployment                                                                                                                                                                                                                                                                                                                                                                                                                     
-=====================                                                                                                                                                                                                                                                                                                                                                                                                                     
-                                                                                                                                                                                                                                                                                                                                                                                                                                          
-                                                                                                                                                                                                                                                                                                                                                                                                                                          
-        File with same data already exists at sam-local-deploy-periodic-ingestion/a319233ae11dd237131e40c023c8dd98.template, skipping upload                                                                                                                                                                                                                                                                                              
-
-
-Waiting for changeset to be created..
-
-CloudFormation stack changeset
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Operation                                                                                                 LogicalResourceId                                                                                         ResourceType                                                                                              Replacement                                                                                             
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-+ Add                                                                                                     DataIngestionLambdaRole                                                                                   AWS::IAM::Role                                                                                            N/A                                                                                                     
-+ Add                                                                                                     PeriodicDataIngestionFunctionScheduledTriggerPermission                                                   AWS::Lambda::Permission                                                                                   N/A                                                                                                     
-+ Add                                                                                                     PeriodicDataIngestionFunctionScheduledTrigger                                                             AWS::Events::Rule                                                                                         N/A                                                                                                     
-+ Add                                                                                                     PeriodicDataIngestionFunction                                                                             AWS::Lambda::Function                                                                                     N/A                                                                                                     
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-                                                                                                                                                                                                                                                                                                                                                                                                                                          
-Changeset created successfully. arn:aws:cloudformation:eu-west-2:727361020121:changeSet/samcli-deploy1749907838/954f1210-32f8-4a6c-82cc-af651fd9a9cd
-
-
-Previewing CloudFormation changeset before deployment                                                                                                                                                                                                                                                                                                                                                                                     
-======================================================
-Deploy this changeset? [y/N]: y
-```
-
-and after some time the deployment completes:
-
-```output
-CloudFormation outputs from deployed stack
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Outputs                                                                                                                                                                                                                                                                                                                                                                                                                               
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Key                 PeriodicDataIngestionFunctionName                                                                                                                                                                                                                                                                                                                                                                                 
-Description         Name of the Periodic Data Ingestion Lambda function                                                                                                                                                                                                                                                                                                                                                               
-Value               PeriodicUKTVDataIngestionFunction                                                                                                                                                                                                                                                                                                                                                                                 
-
-Key                 PeriodicDataIngestionFunctionArn                                                                                                                                                                                                                                                                                                                                                                                  
-Description         ARN of the Periodic Data Ingestion Lambda function                                                                                                                                                                                                                                                                                                                                                                
-Value               arn:aws:lambda:eu-west-2:727361020121:function:PeriodicUKTVDataIngestionFunction                                                                                                                                                                                                                                                                                                                                  
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-                                                                                                                                                                                                                                                                                                                                                                                                                                          
-Successfully created/updated stack - sam-local-deploy-periodic-ingestion in eu-west-2
 ```
 
 5. Test the deployed Lambda function
@@ -254,36 +186,10 @@ sam remote invoke PeriodicUKTVDataIngestionFunction \
   --profile streaming  
 ```
 
-which gave the expected output:
-
-```output
-Invoking Lambda Function PeriodicDataIngestionFunction                                                                                                                                                                                                                                                                                                                                                                                    
-Auto converting value './events/userprefs_title_ingestion.json' into JSON '"./events/userprefs_title_ingestion.json"'. If you don't want auto-conversion, please provide a JSON string as event                                                                                                                                                                                                                                                         
-START RequestId: 4e8c16d3-8fda-431f-bdc9-119be66c8582 Version: $LATEST
-Received event: "./events/userprefs_title_ingestion.json"
-Kinesis Stream Name from env: ProgrammeDataStream
-Successfully sent data to Kinesis. SequenceNumber: 49664244735039333844253464868252815627300673180592504866
-END RequestId: 4e8c16d3-8fda-431f-bdc9-119be66c8582
-REPORT RequestId: 4e8c16d3-8fda-431f-bdc9-119be66c8582  Duration: 113.79 ms     Billed Duration: 114 ms Memory Size: 256 MB     Max Memory Used: 77 MB  Init Duration: 440.69 ms        
-{"statusCode": 200, "body": "{\"message\": \"Data ingested successfully\", \"sequenceNumber\": \"49664244735039333844253464868252815627300673180592504866\"}"}%     
-```
-
 6. To save cost we can now undeploy it so we can work on the next steps
 
 ```bash
 sam delete --profile streaming
-```
-
-and check that works:
-
-```output
-        Are you sure you want to delete the stack sam-local-deploy-periodic-ingestion in the region eu-west-2 ? [y/N]: y
-        Are you sure you want to delete the folder sam-local-deploy-periodic-ingestion in S3 which contains the artifacts? [y/N]: n
-        Do you want to delete the template file a319233ae11dd237131e40c023c8dd98.template in S3? [y/N]: n
-        - Deleting S3 object with key sam-local-deploy-periodic-ingestion/7eb695ca20af3d630911a8a0a50b87f7                                                                                                                                                                                                                                                                                                                                
-        - Deleting Cloudformation stack sam-local-deploy-periodic-ingestion
-
-Deleted successfully
 ```
 
 ## Step 4 - WatchMode initial integration
@@ -296,13 +202,6 @@ This service offers a vast number of APIs but some of the ones of interest for u
 - `/v1/changes/new_titles/` - [Changes > New Titles] (https://api.watchmode.com/docs#new-titles)
 - `/v1/title/{title_id}/details/` - [Title Details API](https://api.watchmode.com/docs#title-details)
 
-It also leverages it's own IDs for actors and movies as described [here](https://api.watchmode.com/docs#id-mapping) the CSV files referenced:
-
-- https://api.watchmode.com/datasets/title_id_map.csv
-- https://api.watchmode.com/datasets/person_id_map.csv
-
-Could be a good source of test data and help understand the service better.
-
 ### Sources
 
 Watchmode has various static data such as sources of TV programmes (`/v1/sources/`). 
@@ -310,159 +209,11 @@ Watchmode has various static data such as sources of TV programmes (`/v1/sources
 It seems like a good idea to create another lambda to save this data to dynamoDB to avoid extra calls. We will create this
 lambda [here](/src/periodic_reference_data) and create a CFN template [here](../cloudformation/periodic-reference.yaml)
 
-We can pass a region of **GB** to `/v1/sources/` to get sources applicable in the UK. A retrieved source looks like this:
-
-```json
-{
-"id": 203,
-"name": "Netflix",
-"type": "sub",
-"logo_100px": "https://cdn.watchmode.com/logos/203_logo_100px.jpg",
-"ios_appstore_url": "https://apps.apple.com/app/id363590051",
-"android_playstore_url": "https://play.google.com/store/apps/details?id=com.netflix.mediaclient",
-"regions": ["US", "GB", "AU"]
-}
-```
-
-we will use a PK of `source:<id>` and a SK of `name` e.g. `source:203` and `Netflix`
-
-We will now build the function and test it locally:
-
-```bash
-# login via IAM Identity Center
-aws sso login --profile streaming
-
-
-# Build
-sam build --template-file ./resources/periodic-reference.yaml --profile streaming
-
-# Test
-sam local invoke PeriodicReferenceFunction \
-  --event ./events/periodic_reference.json \
-  --env-vars ./env/periodic_reference.json \
-  --profile streaming
-#  --template-file ./.aws-sam/build/template.yaml \
-#  --template-file ./resources/periodic-reference.yaml \
-```
-
-<details>
-<summary>Note: why is `--template-file` best omitted?</summary>
-
-Initially I was running a `sam local invoke` command that specifies `--template-file ./resources/periodic-reference.yaml`.
-Unfortunately this was a problem as the template specifies the directory `../src/periodic_reference_data/` which does not
-contain the requests module, and so I got the response:
-
-```output
-{"errorMessage": "Unable to import module 'reference': No module named 'requests'", "errorType": "Runtime.ImportModuleError", "requestId": "", "stackTrace": []}
-```
-
-To fix this, I need to tell sam local invoke to use the template file that sam build generated, as this template will have
-the CodeUri correctly pointing to the built artifacts (including the requests library).
-
-However, when I set the template the environment variables were not working as expected and so I hit upon running the sam build then 
-just running the sam local invoke command with no `--template-file`
-</details>
-
-With everything working we can check the data has been saved as expected:
-
-```bash
-echo "PK\t\t\tSK" # Print header with tabs for spacing
-aws dynamodb scan \
-  --table-name UKTVProgrammes \
-  --max-items 10 \
-  --projection-expression "PK, SK" \
-  --profile streaming \
-  --region eu-west-2 \
-  --output json | \
-  jq -r '.Items[] | "\(.PK.S)\t\(.SK.S)"'
-```
-
-which gives us:
-
-```output
-PK                      SK
-source:381      Funimation
-source:247      Shout! Factory TV (Via Amazon Prime)
-source:411      Sky Store
-source:410      BFI Player
-source:80       Crunchyroll Premium
-source:376      Britbox
-source:349      AppleTV
-source:269      SundanceNow Doc Club (Via Amazon Prime)
-source:418      My5
-source:318      WWE Network
-```
-
-So now we have the sources saved
+We can pass a region of **GB** to `/v1/sources/` to get sources applicable in the UK. 
 
 ### Genres
 
-Watchmode also has a set of genres (`/v1/genres/`). We will extend our lambda to store this data:
-
-```json
-[
-   { "id": 4, "name": "Comedy", "tmdb_id": 35 },
-   { "id": 6, "name": "Documentary", "tmdb_id": 99 },
-   { "id": 33, "name": "Anime", "tmdb_id": null }
-]
-```
-
-we will use a PK of `genre:<id>` and a SK of `name` e.g. `genre:4` and `Comedy`.
-
-We will amend the existing reference data lambda function and test it locally:
-
-```bash
-# login via IAM Identity Center
-aws sso login --profile streaming
-
-# Build
-sam build --template-file ./resources/periodic-reference.yaml --profile streaming
-
-# Test
-sam local invoke PeriodicReferenceFunction \
-  --event ./events/periodic_reference.json \
-  --env-vars ./env/periodic_reference.json \
-  --profile streaming
-```
-
-I then did some significant refactoring and retested with a local invoke which works as expected. Finally we can deploy
-the lambda and test remotely:
-
-```bash
-sam deploy --guided --profile streaming --capabilities CAPABILITY_NAMED_IAM                                                                                                                                                                                                              aws-notes  16:18:05
-```
-which gave the following dialogue to set parameters:
-
-```output
-Configuring SAM deploy
-======================
-
-        Looking for config file [samconfig.toml] :  Not found
-
-        Setting default arguments for 'sam deploy'
-        =========================================
-        Stack Name [sam-app]: uktv-periodic-reference          
-        AWS Region [eu-west-2]: 
-        Parameter SharedInfrastructureStackName [uk-tv-guide-shared-infra]: 
-        Parameter WatchModeApiKey: 
-        #Shows you resources changes to be deployed and require a 'Y' to initiate deploy
-        Confirm changes before deploy [y/N]: y
-        #SAM needs permission to be able to create roles to connect to the resources in your template
-        Allow SAM CLI IAM role creation [Y/n]: y
-        #Preserves the state of previously provisioned resources when an operation fails
-        Disable rollback [y/N]: n
-        Save arguments to configuration file [Y/n]: y
-        SAM configuration file [samconfig.toml]: 
-        SAM configuration environment [default]: 
-```
-
-Then awaited the stack to deploy after confirming. Now to test it works as expected remotely:
-
-```bash
-sam remote invoke PeriodicUKTVReferenceFunction \
-  --event ./events/periodic_reference.json \
-  --profile streaming
-```
+Watchmode also has a set of genres (`/v1/genres/`). We will extend our lambda to store this data.
 
 ## Step 5 - SAM Project cleanup
 
@@ -510,159 +261,17 @@ In the [main CFN template](../cloudformation/uktv-event-streaming-app.yaml) we h
 
 and we have created a Lambda to handle the API requests in [user_preferences/preferences.py](../../src/user_preferences/preferences.py)
 
-We can now deploy our stack with `sam deploy` which works with this output:
-
-```output
-CloudFormation outputs from deployed stack
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Outputs                                                                                                                                                                                                    
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Key                 TestUsername                                                                                                                                                                           
-Description         The username of the pre-created test user                                                                                                                                              
-Value               test.user@example.com                                                                                                                                                                  
-
-Key                 UserPoolClientId                                                                                                                                                                       
-Description         The ID of the Cognito User Pool App Client                                                                                                                                             
-Value               2lcrrfq92ikt67acq3ibceiq7b                                                                                                                                                             
-
-Key                 UserPoolId                                                                                                                                                                             
-Description         The ID of the Cognito User Pool                                                                                                                                                        
-Value               eu-west-2_Re96F4z3a                                                                                                                                                                    
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-Successfully created/updated stack - uktv-event-streaming-app in eu-west-2
-```
-
-Note: for now I have the OpenAPI spec inline in [CloudFormation](../cloudformation/user-preferences.yaml) as hit issues with
-`AWS::Include`
-
-The next step is to create some test events to try it out:
-
-```bash
-# call the PeriodicUKTVReferenceFunction to ensure there is data
-sam local invoke PeriodicReferenceFunction --event events/periodic_reference.json --env-vars ./env/periodic_reference.json
-
-# Test getting sources
-sam local invoke UserPreferencesFunction --event events/user_prefs_get_sources.json --env-vars ./env/user_preferences.json
-
-# Test getting genres
-sam local invoke UserPreferencesFunction --event events/user_prefs_get_genres.json --env-vars ./env/user_preferences.json
-
-# Test getting user preferences (expect none first time)
-sam local invoke UserPreferencesFunction --event events/user_prefs_get_preferences.json --env-vars ./env/user_preferences.json
-
-# Test updating user preferences
-sam local invoke UserPreferencesFunction --event events/user_prefs_put_preferences.json --env-vars ./env/user_preferences.json
-
-# Test getting user preferences (expect ones we just put)
-sam local invoke UserPreferencesFunction --event events/user_prefs_get_preferences.json --env-vars ./env/user_preferences.json
-```
-
-which gives this output for the PUT and GET:
-
-```output
-{"statusCode": 204, "headers": {"Access-Control-Allow-Origin": "*"}}
-{"statusCode": 200, "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"}, "body": "{\"sources\": [\"203\", \"349\"], \"genres\": [\"4\", \"6\"]}"}
-```
-
-We can now try against the deployed lambdas:
-
-```bash
-# Test setting preferences - note the nesting of the function in the app for the invoked lambda  
-sam remote invoke UserPreferencesApp/UserPreferencesFunction  \ 
-  --stack-name uktv-event-streaming-app \
-  --event-file events/user_prefs_put_preferences.json
-
-# Test getting preferences 
-sam remote invoke UserPreferencesApp/UserPreferencesFunction \
-  --stack-name uktv-event-streaming-app \
-  --event-file events/user_prefs_get_preferences.json
-```
-
-Note: I did hit some issues with referencing the API key within the lambda. To resolve this I created a file called `env/local-secrets.json`
-and referenced it in my `samconfig.toml`:
-
-```toml
-[default.local_invoke.parameters]
-env_vars="env/local-secrets.json"
-profile = "streaming"
-region = "eu-west-2"
-```
-
-I then added this content to the file:
-
-```json
-{
-  "Parameters": {
-    "WATCHMODE_API_KEY_SECRET_ARN": "",
-    "WATCHMODE_API_KEY": "<actual API key>"
-  }
-}
-```
-
-and added `env/local-secrets.json` to `.gitignore`
-
 ## Step 7 - Call API to get some shows for all known genres and source
 
 We now have user preferences for source and genre saved and we must retrieve the shows these provide. 
 
-Reviewing the [Watchmode List Titles API](https://api.watchmode.com/docs#list-titles) seems a good fit to get started so 
-lets try to look for Sports(id=29) on Netflix(source_id=203):
-
-```bash
-curl "https://api.watchmode.com/v1/list-titles/?apiKey=${WATCHMODE_API_KEY}&regions=GB&source_ids=203&genres=29&release_date_start20200101" | jq
-```
-
-Which gave me what I was looking for - saved in [sample-list-titles-response.json](sample-list-titles-response.json)
-for reference.
-
-So now I have a list of user preferences that give me a list of genres on a set of sources - for now lets have the user prefs
-drive the logic in periodic ingestion but to make this easier it would also be good to have a kinesis consumer lambda that
-reads the events and saves to lambda
+Reviewing the [Watchmode List Titles API](https://api.watchmode.com/docs#list-titles) seems a good fit to get started.
 
 ## Step 9 - read title data published to kinesis
 
-We will create a new function `TitleRecommendationsConsumerFunction` that expects an event like this and will for now
+We will create a new function `TitleRecommendationsConsumerFunction` that expects an event and will for now
 just log it to the console. This function will live in its own nested stack defined in `resources/title-recommendations-consumer.yaml`
 and its code in `src/title_recommendations_consumer/`.
-
-The form of the events should be like this:
-
-```json
-{
-  "header": {
-    "publishingComponent": "PeriodicUKTitlesForUserPrefsFunction",
-    "publishTimestamp": "2025-07-04T16:02:51.855Z",
-    "publishCause": "userpref:<userId>"
-  },
-  "payload": {
-    "id": 3184039,
-    "title": "MaveriX",
-    "year": 2022,
-    "imdb_id": "tt15373864",
-    "tmdb_id": 196556,
-    "tmdb_type": "tv",
-    "type": "tv_series"
-  }
-}
-```
-
-With a basic implementation in place we can now test locally:
-
-```bash
-$ # Invoke the new consumer function with the Kinesis event
-sam local invoke TitleRecommendationsConsumerFunction \
-  --event events/title_recommendation_kinesis_event.json
-
-...
-
-[INFO]  2025-07-04T16:39:00.328Z        34e61ee5-4081-48fa-9bd0-b2c0a1590397    Received 2 records from Kinesis.
-[INFO]  2025-07-04T16:39:00.328Z        34e61ee5-4081-48fa-9bd0-b2c0a1590397    Successfully processed title event: {"header": {"publishingComponent": "PeriodicUKTitlesForUserPrefsFunction", "publishTimestamp": "2025-07-04T16:02:51.855Z", "publishCause": "scheduled_user_prefs_ingestion"}, "payload": {"id": 3184039, "title": "MaveriX", "year": 2022, "imdb_id": "tt15373864", "tmdb_id": 196556, "tmdb_type": "tv", "type": "tv_series"}}
-[INFO]  2025-07-04T16:39:00.328Z        34e61ee5-4081-48fa-9bd0-b2c0a1590397    Successfully processed title event: {"header": {"publishingComponent": "PeriodicUKTitlesForUserPrefsFunction", "publishTimestamp": "2025-07-04T16:03:12.114Z", "publishCause": "scheduled_user_prefs_ingestion"}, "payload": {"id": 9876543, "title": "Another Ghostly Event", "type": "movie"}}
-END RequestId: 34e61ee5-4081-48fa-9bd0-b2c0a1590397
-REPORT RequestId: 34e61ee5-4081-48fa-9bd0-b2c0a1590397  Init Duration: 0.06 ms  Duration: 89.74 ms      Billed Duration: 90 ms  Memory Size: 128 MB     Max Memory Used: 128 MB 
-{"message": "Successfully processed 2 records."}
-```
 
 ## Step 10 - publish title data to kinesis
 
@@ -676,230 +285,166 @@ for the newly named `PeriodicUKTitlesForUserPrefsFunction` will be:
 4. For each title returned, create a Kinesis record with the new data model.
 5. Publish all records to the Kinesis stream in a batch.
 
-The tricky thing is to test this lambda we need the following remote services:
-
-1. AWS Secrets Manager (to get the API key).
-2. AWS DynamoDB (to scan for all user preferences).
-3. AWS Kinesis (to publish the titles)
-
-This makes it necessary to deploy the services which is cost I'd sooner avoid at this point so I will look at using 
-localstack to set up a local set of these services
-
 ### LocalStack setup
 
-### LocalStack setup
+To avoid deploying all the services to AWS for testing, we will use LocalStack.
 
-- The first step is to create a docker compose file to define the localstack services we will use in place of the real
-  AWS services. This is defined here [docker-compose.yaml](../../docker-compose.yaml)
-- The second step is to create a script to initialize the local resources. This is defined in [local-test-setup.sh](../scripts/local_tests/local_setup.sh).
-- The third step is to remove all direct WatchMode API keys from the lambdas as we can save them to the LocalStack secrets manager now. This also means
-  we can remove the local-secrets.json as everything can be saved to source control as we have no secrets hardcoded
-- The final step is to create a script to run all the tests to make testing easier which I did in [resources/local-test-execute-all.sh](./resources/local-test-execute-all.sh]
+- A docker compose file defines the localstack services: [docker-compose.yaml](../../docker-compose.yaml)
+- A script initializes the local resources: [local-test-setup.sh](../scripts/local_tests/local_setup.sh).
+- WatchMode API keys are stored in the LocalStack Secrets Manager.
+- A script runs all local tests: [resources/local-test-execute-all.sh](./resources/local-test-execute-all.sh]
 
 The local development workflow is as follows:
 
-1. **Start LocalStack:** In your project root, run `docker compose up`.
-2. **Initialize Resources:** In a new terminal, run `./resources/local-test-setup.sh`. This only needs to be done once per LocalStack session.
-3. **Run Local Tests:** - use [resources/local-test-execute-all.sh](./resources/local-test-execute-all.sh] to run all
-  the tests.
-
-Note: The test script sets the `AWS_ENDPOINT_URL` to `http://localstack:4566` to leverage the localstack AWS services.
+1. **Start LocalStack:** `docker compose up`.
+2. **Initialize Resources:** `./resources/local-test-setup.sh`.
+3. **Run Local Tests:** use [resources/local-test-execute-all.sh](./resources/local-test-execute-all.sh] to run all the tests.
 
 ### Specialist Test Script for Title Ingestion
 
-To test the title ingestion we need a specialist script I created as [test_e2e.sh](../scripts/local_tests/test_e2e.sh).
-This script performs a full integration test of the `UserPrefsTitleIngestionFunction` by:
-
-- **Setting up** test data by creating a dummy user with specific source and genre preferences in the local DynamoDB instance.
-- **Executing** the Lambda function using `sam local invoke`, which triggers it to read the preferences and fetch titles from the WatchMode API.
-- **Verifying** the outcome by polling the local Kinesis stream to ensure the correct title data was published.
-- **Tearing down** the test by automatically deleting the dummy user data from DynamoDB, ensuring a clean state for the next run.
+A specialist script [test_e2e.sh](../scripts/local_tests/test_e2e.sh) performs a full integration test of the `UserPrefsTitleIngestionFunction`.
 
 ## Step 11 - store title data to DynamoDB
 
-The logic used in the new function to save titles to Dynamo named `TitleRecommendationsConsumerFunction` will be:
+The `TitleRecommendationsConsumerFunction` will:
 
-1. Subscribe to Kinesis and read Title events published by `UserPrefsTitleIngestionFunction`
-2. Write a record to DynamoDB with PK `source:<source_id>:genre:<genre_id>` and SK `title:<title_id>`
-3. Write a record to DynamoDB with PK `title:<title_id>` and SK `record` and the `data` field containing the title payload
-
-The lambda source for this is in [src/title_recommendations_consumer](../../src/title_recommendations_consumer)
-
-We can now extend our [end-to-end test script](../scripts/local_tests/test_e2e.sh) to test this by adding:
- - call to `TitleRecommendationsConsumerFunction` with published kinesis data
- - check of dynamo for the expected rows
+1. Subscribe to Kinesis and read Title events.
+2. Write a record to DynamoDB with PK `source:<source_id>:genre:<genre_id>` and SK `title:<title_id>`.
+3. Write a canonical title record to DynamoDB with PK `title:<title_id>` and SK `record`.
 
 ## Step 12 - enrich the stored title data in DynamoDB
 
-To complete the "Process and enrich the data" step from our plan, we will now create a new `TitleEnrichmentFunction`. This function follows a robust, decoupled architecture using DynamoDB Streams.
+A new `TitleEnrichmentFunction` is triggered by a DynamoDB Stream on the `ProgrammesTable`.
 
-The process is as follows:
-
-1.  **Enable DynamoDB Streams**: We first enable DynamoDB Streams on the `ProgrammesTable`. This means any change to an item in the table (like an insert, update, or delete) will generate an event.
-2.  **Create the Enrichment Function**: A new Lambda function, `TitleEnrichmentFunction`, is created. Its code resides in `src/title_enrichment/`.
-3.  **Trigger from the Stream**: This function is configured to be triggered by the DynamoDB Stream from the `ProgrammesTable`. It will only process `INSERT` events for our canonical title records (i.e., items with a PK of `title:<id>` and SK of `record`).
-4.  **Fetch Details**: For each new title record, the function extracts the `title_id` and calls the WatchMode `/v1/title/{title_id}/details/` API endpoint.
-5.  **Update DynamoDB**: The function takes the detailed information returned from the API (like `plot_overview`, `poster`, `user_rating`) and performs an `UpdateItem` operation on the original canonical record in DynamoDB, adding this new enriched data.
-
-This asynchronous pattern ensures that our main ingestion pipeline (Kinesis -> Consumer) remains fast and is not blocked by calls to an external API. If the enrichment fails for any reason, Lambda will automatically retry the event from the stream, making the system highly resilient.
-
-We also write a specific test `event-streaming-app/resources/scripts/tests/test_enrichment.sh` to test the component.
-
-```output
-[INFO]  2025-08-11T17:16:35.695Z                Using LocalStack endpoint for DynamoDB: http://localstack:4566
-[INFO]  2025-08-11T17:16:35.717Z                Found credentials in environment variables.
-[INFO]  2025-08-11T17:16:35.773Z                Successfully initialized DynamoDB table client for: UKTVProgrammesLocal
-[INFO]  2025-08-11T17:16:35.778Z                Initialized Secrets Manager client.
-[INFO]  2025-08-11T17:16:35.786Z        47005d0b-a3e4-4a98-94a4-f4d5c24b8924    Enriching title ID: 3226810
-[INFO]  2025-08-11T17:16:36.393Z        47005d0b-a3e4-4a98-94a4-f4d5c24b8924    Successfully enriched title ID: 3226810
-END RequestId: 47005d0b-a3e4-4a98-94a4-f4d5c24b8924
-REPORT RequestId: 47005d0b-a3e4-4a98-94a4-f4d5c24b8924  Init Duration: 0.03 ms  Duration: 1048.29 ms    Billed Duration: 1049 ms        Memory Size: 256 MB     Max Memory Used: 256 MB 
-{"message": "Processed 1 records."}
-```
-
-With this passing we can then test the whole flow for real...
+1.  It processes `INSERT` events for canonical title records.
+2.  For each new title, it calls the WatchMode `/v1/title/{title_id}/details/` API.
+3.  It updates the title record in DynamoDB with the enriched data (e.g., `plot_overview`, `poster`).
 
 ## Step 13 - deploy to AWS and run an E2E test (taking cost safeguards)
 
-We now have the majority of the event pipeline working. We now can deploy it to AWS for real and run a basic test. The 
-steps are:
-
-1. Deploy the application using AWS SAM
-2. Trigger the reference data refresh
-3. Create a user preference for a single source and genre
-4. Trigger the user preferences ingestion
-5. Review the data in DynamoDB
-6. Teardown the infrastructure again
-
-This should all be automated in a file [remote_deploy_and_smoke_test.sh](../scripts/remote_deploy_and_smoke_test.sh)
-
-When I ran this I did run into a few issues with the requirements.tx files not being honoured. I think this was because of
-the defaults in [samconfig.toml](../../samconfig.toml)
-
-I ended up using:
-
-```toml
-# sam deploy command
-[default.deploy.parameters]
-stack_name = "uktv-event-streaming-app"
-resolve_s3 = true
-s3_prefix = "uktv-event-streaming-app"
-region = "eu-west-2"
-profile = "streaming"
-#confirm_changeset = true
-#capabilities = "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
-#parameter_overrides = "WatchModeApiKey=\"REDACTED\""
-#image_repositories = []
-#template_file = "resources/cloudformation/uktv-event-streaming-app.yaml"
-```
-
-and the build & deploy commands:
-
-```bash
-sam build --use-container
-
-sam deploy \
-    --stack-name "$STACK_NAME" \
-    --profile "$PROFILE" \
-    --region "$REGION" \
-    --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-     --parameter-overrides "CreateDataStream=true" "WatchModeApiKey=${WATCHMODE_API_KEY}"
-```
-
-This worked by gives this error in step 7 to investigate:
-
-```output
-❌ Failure! No enriched items found in DynamoDB.
-```
-
-This seems to be because of the way I was querying the data in my validation step which I corrected and was greeted with
-a success:
-
-```output
-⏳ Step 7: Verifying data in DynamoDB...
-Waiting for 90 seconds for data to flow through Kinesis, be consumed, and enriched...
-🔍 Scanning DynamoDB for enriched title records...
-✅ Success! Found 20 enriched items in DynamoDB.
-```
+We now have the majority of the event pipeline working. We now can deploy it to AWS for real and run a basic test. The steps are automated in [remote_deploy_and_smoke_test.sh](../scripts/remote_deploy_and_smoke_test.sh).
 
 ## Step 14 - add the EventBridge triggers
 
-With everything working I want to define the EventBridge trigger to:
+EventBridge triggers are defined in CloudFormation to:
 
-- perform a daily call to `PeriodicReferenceFunction` with `refresh_sources` and `refresh_genres` set to `Y`
-- perform a `UserPrefsTitleIngestionFunction` daily call
-
-These were actually in place already in the CloudFormation:
-
-```yaml
-      Events:
-        ScheduledTrigger:
-          Type: Schedule
-          Properties:
-            Schedule: rate(1 day) # Example: runs once a day
-            Name: DailyUKTVReferenceTrigger
-            Enabled: true
-            # Input to refresh both sources and genres daily for the GB region
-            Input: '{"refresh_sources": "Y", "refresh_genres": "Y", "regions": "GB"}'
-
-...
-
-      Events:
-        Stream:
-          Type: DynamoDB
-          Properties:
-            Stream: !Ref ProgrammesTableStreamArn
-            BatchSize: 10
-            StartingPosition: LATEST
-```
-
-So no further action required.
+- Perform a daily call to `PeriodicReferenceFunction`.
+- Perform a `UserPrefsTitleIngestionFunction` daily call.
 
 ## Step 15 - single page web application hosted on S3
 
-The next step is to host a single page web application that looks at the DynamoDB table and provides the following 
-capabilities:
+This step adds a single page web application (SPA) that provides user authentication and displays TV titles and recommendations from DynamoDB.
 
-1. User Authentication
-2. Ability to update user preferences
-3. Ability to review all of the available titles that fall within your user preferences
-4. Ability to review only the new recommendations for your user (user_rating > 7) and added within the last week
+### What's Been Added
 
-The view for 3. and 4. should be a tile with an image which you can click on to get full details. 
+- **CloudFormation Resources**: `S3 Bucket`, `WebsiteDeploymentFunction`, `WebApiApp` nested stack.
+- **Website Files**: `index.html`, `error.html`, `app.js` are deployed to S3.
+- **API Endpoints**: `/titles` and `/recommendations`.
 
-### Testing approach
+### Deployment Steps
 
-The next step is to deploy the website to see how it looks. To do this I created the script [remote_deploy.sh](event-streaming-app/resources/scripts/remote_deploy.sh)
+1.  **Deploy the CloudFormation Stack** using `sam deploy` or `aws cloudformation deploy`.
+2.  **Update Website Configuration** by running the `update_website_config.sh` script to inject the correct Cognito and API Gateway endpoint values into `app.js`.
+3.  **Access the Website** via the `WebsiteUrl` output from CloudFormation.
 
-For now I have just added an s3 sync at the end and not created a CloudFront distribution so we may need to revisit that but it works to sync the files to S3 a capability. 
-I ran into issues with the revcommended approach of having a custom lambda handler so will look at that after.
+### Website Features
 
+- **User Authentication**: Uses AWS Cognito. Test user: `test.user@example.com`.
+- **User Preferences**: Display and update streaming source and genre preferences.
+- **Content Display**: "All Titles" and "Recommendations" tabs with clickable title cards.
+- **Responsive Design**: Bootstrap-based, mobile-friendly UI.
 
+## Step 16 - Administrator screen
 
-## Step 16 - incorporate teh S3 file sync into the cloudformation stack
+This section outlines the design for the administrator screen, covering UI, API, security, and integration aspects.
 
+### Admin Screen UI Design
+
+The admin screen is designed for clarity and ease of use, providing distinct sections for administrative tasks.
+
+#### Header
+*   **Application Title:** "TV Guide Admin Panel"
+*   **User Login Status:** Display "Logged in as: [Username]"
+*   **Logout Button**
+
+#### Main Content Area
+This area will be divided into logical sections for different administrative tasks.
+
+##### Data Management Section
+*   **Reference Data Refresh:**
+    *   Button: "Refresh Reference Data"
+    *   Status Display: Shows "In Progress", "Completed", or "Error" with timestamps.
+    *   Logs/Details: A collapsible section for viewing execution logs or detailed status.
+*   **Title Data Refresh:**
+    *   Button: "Refresh Title Data"
+    *   Status Display.
+    *   Logs/Details.
+*   **Title Enrichment:**
+    *   Button: "Trigger Enrichment for Unenriched Titles"
+    *   Status Display.
+    *   Logs/Details.
+    *   (Optional: Display a count of unenriched titles.)
+
+##### System Status Section
+*   **DynamoDB Data Summary:**
+    *   Display of key metrics (e.g., table sizes, item counts).
+    *   Button: "Generate Full Summary" (This will trigger a detailed report).
+    *   Display Area: For the summary output.
+
+### Admin API Design
+
+The admin API will be a RESTful API, likely exposed via API Gateway and integrated with a new Lambda function.
+
+#### Endpoints
+
+*   **Trigger Reference Data Refresh**: `POST /admin/data/reference/refresh`
+*   **Trigger Title Data Refresh**: `POST /admin/data/titles/refresh`
+*   **Trigger Title Enrichment**: `POST /admin/data/titles/enrich`
+*   **Get DynamoDB Data Summary**: `GET /admin/system/dynamodb/summary`
+
+### DynamoDB Data Summary Implementation Plan
+
+The admin Lambda function will query DynamoDB to gather table metadata.
+*   **Identify Tables:** Table names will be identified from the CloudFormation template.
+*   **Query Metadata:** Use Boto3 to get item count and size for each table.
+*   **Permissions:** The Lambda's IAM role requires `dynamodb:ListTables` and `dynamodb:DescribeTable` permissions.
+
+### Security Admin Implementation Plan
+
+*   **User Management:** Use AWS IAM Identity Center to create a "Security Admin" group and assign users.
+*   **Authentication:** Implement federated login via IAM Identity Center for the admin screen.
+*   **Authorization:** Use API Gateway authorizers to validate user credentials and permissions.
+*   **Frontend Protection:** Implement client-side checks to restrict access to admin UI elements.
+
+### New Admin Lambda Function Scope and Responsibilities
+
+*   **Language/Runtime:** Python.
+*   **Triggers:** API Gateway.
+*   **Responsibilities:**
+    *   Handle API requests.
+    *   Orchestrate data operations.
+    *   Work with API Gateway authorizers for security.
+*   **IAM Permissions:** `lambda:InvokeFunction`, `dynamodb:ListTables`, `dynamodb:DescribeTable`.
+
+### Admin UI Integration Plan
+
+*   **API Configuration:** Store the admin API Gateway base URL in a configuration file.
+*   **Authentication Token:** Obtain and include tokens in `Authorization` headers for API requests.
+*   **Making API Calls:** Use JavaScript (`fetch` API) for API calls.
+*   **User Feedback:** Provide clear messages for success, ongoing operations, and errors.
+*   **Frontend Protection:** Ensure admin-specific UI elements are only visible for authenticated "Security Admins".
+
+### Testing plan
+
+*   **Testing user:** Create a new user `TestAdminUser` in Cloudformation with the email `admin.user@example.com`.
+*   **Unit Tests:** Create unit tests using pytest to validate the admin API lambda function.
+*   **Integration Tests:** Use a script to test the deployed API via API Gateway.
 
 ## Step 17 - schedule the API calls to get the shows and make it efficient
 
-#TODO: validate the content below from Gemini
-
-The current title ingestion process (`UserPrefsTitleIngestionFunction`) is scheduled periodically and works by:
-1.  Scanning DynamoDB to find all user preference items across all users.
-2.  Aggregating all `source_ids` and `genre_ids` into two global, unique lists.
-3.  Making a single API call to the WatchMode `/v1/list-titles` endpoint using these two aggregated lists.
-
-This approach is inefficient because it fetches titles for every possible combination of all unique sources and genres, 
-rather than just the specific combinations users have expressed preferences for. For example, if one user likes Comedies
-on Netflix and another likes Dramas on Prime, the current system fetches titles for 
-`(Netflix, Comedy)`, `(Netflix, Drama)`, `(Prime, Comedy)`, and `(Prime, Drama)`, even though only two of those 
-combinations were actually requested. This results in fetching and processing unnecessary data. The current implementation
-also lacks pagination, meaning it may not retrieve all available titles if the result set is large.
-
-A more efficient and accurate approach would be to modify the ingestion logic to:
-1.  Gather all unique **source and genre combinations** that users have explicitly selected (e.g., `(Netflix, Comedy)`, `(Prime, Drama)`).
-2.  Make a single, paginated API call to WatchMode that can filter on these specific combinations. This ensures we only fetch titles that match at least one user's specific preference, eliminating irrelevant data, reducing downstream processing load, and making the recommendations more accurate.
-
-
+The current title ingestion process is inefficient. A more efficient approach would be to:
+1.  Gather all unique **source and genre combinations** that users have explicitly selected.
+2.  Make a single, paginated API call to WatchMode that can filter on these specific combinations.
 
 ## Cleanup
  
@@ -910,37 +455,3 @@ aws cloudformation delete-stack \
   --stack-name uk-tv-guide-shared-infra \
   --profile streaming
 ```
-
-## User Guide Outline
-
-This section will outline the content for the user guide, which will provide comprehensive instructions on how to use the UK TV Guide application.
-
-### 1. Introduction
-- Welcome to UK TV Guide
-- Key Features
-
-### 2. Getting Started
-- Account Creation and Login (via Google)
-- Setting Up Your Preferences (Sources and Genres)
-
-### 3. Browsing Titles
-- Viewing All Available Titles
-- Understanding Title Details (Plot, Rating, Sources, Genres)
-
-### 4. Recommendations
-- How Recommendations Work
-- Viewing Your Personalized Recommendations
-
-### 5. Managing Preferences
-- Updating Streaming Sources
-- Updating Genre Preferences
-
-### 6. Admin Features (if applicable to end-users)
-- Overview of administrative tasks (e.g., triggering data refreshes - *this will be for a separate admin user guide*)
-
-### 7. Troubleshooting
-- Common Issues and Solutions
-- Contact Support
-
-### 8. FAQ
-- Frequently Asked Questions

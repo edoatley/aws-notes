@@ -100,7 +100,7 @@ info "DynamoDB Summary Response: $SUMMARY_RESPONSE"
 
 # --- Test POST /admin/data/reference/refresh ---
 log "Testing POST /admin/data/reference/refresh..."
-REFRESH_PAYLOAD='{"refresh_sources": "Y", "regions": "GB"}'
+REFRESH_PAYLOAD='{"refresh_sources": "Y", "refresh_genres": "Y", "regions": "GB"}'
 admin_api_curl "POST" "/admin/data/reference/refresh" "$REFRESH_PAYLOAD" > /dev/null 2>&1
 log "POST /admin/data/reference/refresh initiated. Waiting for logs..."
 sleep 20 # Wait for logs to be generated
