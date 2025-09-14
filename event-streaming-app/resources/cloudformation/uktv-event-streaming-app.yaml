@@ -245,6 +245,15 @@ Outputs:
   AdminApiEndpoint:
     Description: "The Admin API endpoint URL"
     Value: !GetAtt AdminApiApp.Outputs.ApiEndpoint
+  PeriodicReferenceFunctionName:
+    Description: "Name of the Periodic Reference Data Lambda function"
+    Value: !GetAtt PeriodicReferenceApp.Outputs.PeriodicReferenceFunctionName
+  UserPrefsTitleIngestionFunctionName:
+    Description: "Name of the User Prefs Title Ingestion Lambda function"
+    Value: !GetAtt UserPrefsTitleIngestionApp.Outputs.UserPrefsTitleIngestionFunctionName
+  TitleEnrichmentFunctionName:
+    Description: "Name of the Title Enrichment Lambda function"
+    Value: !GetAtt TitleEnrichmentApp.Outputs.TitleEnrichmentFunctionName
   ProgrammesTable:
     Description: "The name of the DynamoDB table for programmes"
     Value: !Ref ProgrammesTable

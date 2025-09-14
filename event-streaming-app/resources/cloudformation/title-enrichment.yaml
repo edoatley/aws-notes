@@ -79,6 +79,9 @@ Resources:
       BuildMethod: python3.12
 
 Outputs:
+  TitleEnrichmentFunctionName:
+    Description: "Name of the Title Enrichment Lambda function"
+    Value: !Ref TitleEnrichmentFunction
   TitleEnrichmentFunctionArn:
     Description: "ARN of the Title Enrichment Lambda function"
     Value: !GetAtt TitleEnrichmentFunction.Arn

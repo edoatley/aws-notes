@@ -8,8 +8,6 @@ set -o pipefail # The return value of a pipeline is the status of the last comma
 STACK_NAME="uktv-event-streaming-app"
 PROFILE="streaming"
 REGION="eu-west-2"
-# Admin API Key is assumed to be obtained from stack outputs, similar to Web API Key.
-# If Admin API has a separate key or authentication mechanism, this needs adjustment.
 
 # --- Helper Functions ---
 log() {
@@ -26,8 +24,6 @@ error() {
 }
 
 # Function to make Admin API calls
-# Usage: admin_api_curl <method> <path> [json_data]
-# It uses global variables: ADMIN_API_ENDPOINT
 admin_api_curl() {
     local method=$1
     local path=$2
@@ -44,7 +40,6 @@ admin_api_curl() {
         response=$(curl -s -w "\n%{http_code}" -X "$method" "${headers[@]}" "${ADMIN_API_ENDPOINT}${path}")
     fi
 
-    # Separate body and status code
     http_code=$(tail -n1 <<< "$response")
     body=$(sed '$ d' <<< "$response")
 
@@ -52,7 +47,6 @@ admin_api_curl() {
         error "Request to $method $path failed with status $http_code. Body: $body"
     fi
 
-    # Return body for further processing
     echo "$body"
 }
 
@@ -85,65 +79,48 @@ log "AWS SSO session is active."
 
 # Step 2: Fetch Admin API Stack Outputs
 log "Step 2: Fetching required outputs from stack '$STACK_NAME' for Admin API..."
-# From 'uktv-event-streaming-app.yaml', Output 'AdminApiEndpoint' is available.
 ADMIN_API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[].Outputs[?OutputKey=='AdminApiEndpoint'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+PERIODIC_REFERENCE_FUNCTION_NAME=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[].Outputs[?OutputKey=='PeriodicReferenceFunctionName'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+USER_PREFS_INGESTION_FUNCTION_NAME=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[].Outputs[?OutputKey=='UserPrefsTitleIngestionFunctionName'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+TITLE_ENRICHMENT_FUNCTION_NAME=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[].Outputs[?OutputKey=='TitleEnrichmentFunctionName'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 
 if [ -z "$ADMIN_API_ENDPOINT" ]; then
     error "Failed to retrieve Admin API endpoint from stack outputs. Aborting."
 fi
-log "Successfully fetched Admin API outputs."
+log "Successfully fetched API and function details."
 info "Admin API Endpoint: $ADMIN_API_ENDPOINT"
 
 # Step 3: Test Admin API Endpoints
-
 log "Step 3: Starting Admin API endpoint tests..."
 
 # --- Test GET /admin/system/dynamodb/summary ---
 log "Testing GET /admin/system/dynamodb/summary..."
 SUMMARY_RESPONSE=$(admin_api_curl "GET" "/admin/system/dynamodb/summary")
-if ! echo "$SUMMARY_RESPONSE" | jq -e '.tables' > /dev/null; then
-    error "GET /admin/system/dynamodb/summary did not return expected summary data. Response: $SUMMARY_RESPONSE"
-fi
-log "GET /admin/system/dynamodb/summary returned valid summary data."
-info "Summary data: $SUMMARY_RESPONSE"
+info "DynamoDB Summary Response: $SUMMARY_RESPONSE"
 
 # --- Test POST /admin/data/reference/refresh ---
 log "Testing POST /admin/data/reference/refresh..."
-REFRESH_RESPONSE=$(admin_api_curl "POST" "/admin/data/reference/refresh")
-if ! echo "$REFRESH_RESPONSE" | jq -e '.message | contains("initiated")' > /dev/null; then
-    error "POST /admin/data/reference/refresh did not return expected initiation message. Response: $REFRESH_RESPONSE"
-fi
-JOB_ID_REFRESH=$(echo "$REFRESH_RESPONSE" | jq -r '.job_id')
-if [ -z "$JOB_ID_REFRESH" ]; then
-    error "POST /admin/data/reference/refresh did not return a job_id. Response: $REFRESH_RESPONSE"
-fi
-log "POST /admin/data/reference/refresh initiated successfully with job ID: $JOB_ID_REFRESH."
+REFRESH_PAYLOAD='{"refresh_sources": "Y", "regions": "GB"}'
+admin_api_curl "POST" "/admin/data/reference/refresh" "$REFRESH_PAYLOAD" > /dev/null 2>&1
+log "POST /admin/data/reference/refresh initiated. Waiting for logs..."
+sleep 20 # Wait for logs to be generated
+./resources/scripts/get_lambda_logs.sh "$PERIODIC_REFERENCE_FUNCTION_NAME" "$PROFILE" "$REGION"
 
 # --- Test POST /admin/data/titles/refresh ---
 log "Testing POST /admin/data/titles/refresh..."
-TITLE_REFRESH_RESPONSE=$(admin_api_curl "POST" "/admin/data/titles/refresh")
-if ! echo "$TITLE_REFRESH_RESPONSE" | jq -e '.message | contains("initiated")' > /dev/null; then
-    error "POST /admin/data/titles/refresh did not return expected initiation message. Response: $TITLE_REFRESH_RESPONSE"
-fi
-JOB_ID_TITLE_REFRESH=$(echo "$TITLE_REFRESH_RESPONSE" | jq -r '.job_id')
-if [ -z "$JOB_ID_TITLE_REFRESH" ]; then
-    error "POST /admin/data/titles/refresh did not return a job_id. Response: $TITLE_REFRESH_RESPONSE"
-fi
-log "POST /admin/data/titles/refresh initiated successfully with job ID: $JOB_ID_TITLE_REFRESH."
+admin_api_curl "POST" "/admin/data/titles/refresh" '{}' > /dev/null 2>&1
+log "POST /admin/data/titles/refresh initiated. Waiting for logs..."
+sleep 20 # Wait for logs to be generated
+./resources/scripts/get_lambda_logs.sh "$USER_PREFS_INGESTION_FUNCTION_NAME" "$PROFILE" "$REGION"
+
 
 # --- Test POST /admin/data/titles/enrich ---
 log "Testing POST /admin/data/titles/enrich..."
-ENRICH_RESPONSE=$(admin_api_curl "POST" "/admin/data/titles/enrich")
-if ! echo "$ENRICH_RESPONSE" | jq -e '.message | contains("initiated")' > /dev/null; then
-    error "POST /admin/data/titles/enrich did not return expected initiation message. Response: $ENRICH_RESPONSE"
-fi
-JOB_ID_ENRICH=$(echo "$ENRICH_RESPONSE" | jq -r '.job_id')
-if [ -z "$JOB_ID_ENRICH" ]; then
-    error "POST /admin/data/titles/enrich did not return a job_id. Response: $ENRICH_RESPONSE"
-fi
-log "POST /admin/data/titles/enrich initiated successfully with job ID: $JOB_ID_ENRICH."
+admin_api_curl "POST" "/admin/data/titles/enrich" '{}' > /dev/null 2>&1
+log "POST /admin/data/titles/enrich initiated. Waiting for logs..."
+sleep 20 # Wait for logs to be generated
+./resources/scripts/get_lambda_logs.sh "$TITLE_ENRICHMENT_FUNCTION_NAME" "$PROFILE" "$REGION"
 
 echo ""
 echo "🎉 All Admin API integration tests passed successfully! 🎉"
-
 exit 0

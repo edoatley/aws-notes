@@ -96,13 +96,28 @@ def lambda_handler(event, context):
     response_body = {"message": "Not Found"}
     status_code = 404
     
+    # Parse the request body if it exists
+    body = {}
+    if event.get('body'):
+        try:
+            body = json.loads(event['body'])
+        except json.JSONDecodeError:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({"message": "Invalid JSON in request body"})
+            }
+
     if http_method == 'POST':
         if path == '/admin/data/reference/refresh':
-            response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["reference_data_refresh"])
+            response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["reference_data_refresh"], payload=body)
         elif path == '/admin/data/titles/refresh':
-            response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["title_data_refresh"])
+            response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["title_data_refresh"], payload=body)
         elif path == '/admin/data/titles/enrich':
-            response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["title_enrichment"])
+            response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["title_enrichment"], payload=body)
         else:
             response_body = {"message": f"POST request to unknown path: {path}"}
             status_code = 404
