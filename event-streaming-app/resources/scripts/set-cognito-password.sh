@@ -3,49 +3,60 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-STACK_NAME="uktv-event-streaming-app"
+# --- Parameters ---
+STACK_NAME="${1:-uktv-event-streaming-app}"
+PROFILE="${2:-default}"
+REGION="${3:-eu-west-2}"
 NEW_PASSWORD="A-Strong-P@ssw0rd1"
 
 echo "Fetching outputs from CloudFormation stack: $STACK_NAME..."
 
-# Use aws cli to describe the stack and query the outputs.
-# The --query parameter filters the JSON response.
-# The --output text parameter returns the value as a clean string.
-USER_POOL_ID=$(aws cloudformation describe-stacks \
+# Fetch all outputs in one go for efficiency
+STACK_OUTPUTS=$(aws cloudformation describe-stacks \
   --stack-name "$STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
-  --output text)
+  --query "Stacks[0].Outputs" \
+  --profile "$PROFILE" \
+  --region "$REGION")
 
-USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks \
-  --stack-name "$STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" \
-  --output text)
+# Helper function to get a specific output value
+get_output_value() {
+    echo "$STACK_OUTPUTS" | jq -r ".[] | select(.OutputKey==\"$1\") | .OutputValue"
+}
 
-TEST_USERNAME=$(aws cloudformation describe-stacks \
-  --stack-name "$STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='TestUsername'].OutputValue" \
-  --output text)
+# --- Fetch Required Values ---
+USER_POOL_ID=$(get_output_value "UserPoolId")
+TEST_USERNAME=$(get_output_value "TestUsername")
+ADMIN_USERNAME=$(get_output_value "AdminUsername")
 
 # --- Validation ---
-# Check if the variables were successfully populated.
-if [ -z "$USER_POOL_ID" ] || [ -z "$TEST_USERNAME" ]; then
-    echo "Error: Could not retrieve stack outputs. Please check if the stack '$STACK_NAME' exists and is in a 'CREATE_COMPLETE' or 'UPDATE_COMPLETE' state."
+if [ -z "$USER_POOL_ID" ]; then
+    echo "Error: Could not retrieve User Pool ID. Please check if the stack '$STACK_NAME' exists."
+    exit 1
+fi
+
+if [ -z "$TEST_USERNAME" ] && [ -z "$ADMIN_USERNAME" ]; then
+    echo "Error: Could not retrieve any usernames from stack outputs."
     exit 1
 fi
 
 echo "✅ Stack outputs retrieved successfully!"
 echo "   - User Pool ID: $USER_POOL_ID"
-echo "   - Test Username: $TEST_USERNAME"
-echo ""
 
-# --- Set User Password ---
-echo "Setting initial password for test user: $TEST_USERNAME..."
+# --- Set User Passwords ---
+USERS_TO_UPDATE=()
+[ -n "$TEST_USERNAME" ] && USERS_TO_UPDATE+=("$TEST_USERNAME")
+[ -n "$ADMIN_USERNAME" ] && USERS_TO_UPDATE+=("$ADMIN_USERNAME")
 
-aws cognito-idp admin-set-user-password \
-  --user-pool-id "$USER_POOL_ID" \
-  --username "$TEST_USERNAME" \
-  --password "$NEW_PASSWORD" \
-  --permanent
+for USERNAME in "${USERS_TO_UPDATE[@]}"; do
+  echo -e "\nSetting initial password for user: $USERNAME..."
+  aws cognito-idp admin-set-user-password \
+    --user-pool-id "$USER_POOL_ID" \
+    --username "$USERNAME" \
+    --password "$NEW_PASSWORD" \
+    --permanent \
+    --profile "$PROFILE" \
+    --region "$REGION"
+  echo "✅ Password for '$USERNAME' has been set."
+done
 
-echo "✅ Password for '$TEST_USERNAME' has been set."
-echo "You can now log in with this user."
+echo -e "\nAll specified users have been updated. You can now log in."

@@ -16,6 +16,10 @@ Parameters:
     Type: String
     Description: "The username of the pre-created test user"
     Default: "test.user@example.com"
+  AdminUserName:
+    Type: String
+    Description: "The username for the pre-created admin user."
+    Default: "admin.user@example.com"
   WatchModeApiKey:
     Type: String
     NoEcho: true
@@ -114,61 +118,17 @@ Resources:
           MaxTTL: 31536000
           MinTTL: 0
 
-  UserPreferencesUserPool:
-    Type: AWS::Cognito::UserPool
-    Properties:
-      UserPoolName: !Sub "${AWS::StackName}-UserPool"
-      UsernameAttributes: [email]
-      AutoVerifiedAttributes: [email]
-      Policies:
-        PasswordPolicy:
-          MinimumLength: 8
-          RequireLowercase: true
-          RequireNumbers: true
-          RequireSymbols: false
-          RequireUppercase: true
-
-  UserPreferencesUserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      ClientName: !Sub "${AWS::StackName}-AppClient"
-      UserPoolId: !Ref UserPreferencesUserPool
-      GenerateSecret: false
-      AllowedOAuthFlowsUserPoolClient: true
-      SupportedIdentityProviders: [COGNITO]
-      CallbackURLs: [!Sub "https://${WebsiteDistribution.DomainName}/index.html", "http://localhost:8000/index.html"]
-      LogoutURLs: [!Sub "https://${WebsiteDistribution.DomainName}/index.html", "http://localhost:8000/index.html"]
-      AllowedOAuthFlows: [implicit, code]
-      AllowedOAuthScopes: [openid, email, profile]
-
-  TestScriptUserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      ClientName: !Sub "${AWS::StackName}-TestScriptClient"
-      UserPoolId: !Ref UserPreferencesUserPool
-      GenerateSecret: false
-      ExplicitAuthFlows:
-        - ALLOW_USER_PASSWORD_AUTH
-        - ALLOW_REFRESH_TOKEN_AUTH
-
-  UserPoolDomain:
-    Type: AWS::Cognito::UserPoolDomain
-    Properties:
-      UserPoolId: !Ref UserPreferencesUserPool
-      Domain: !Sub "${AWS::StackName}-user-pool-${AWS::AccountId}"
-
-  TestUser:
-    Type: AWS::Cognito::UserPoolUser
-    Properties:
-      UserPoolId: !Ref UserPreferencesUserPool
-      Username: !Ref TestUserName
-      UserAttributes:
-        - Name: email
-          Value: !Ref TestUserName
-        - Name: email_verified
-          Value: "true"
-
   # --- Nested Applications ---
+  CognitoApp:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: cognito-resources.yaml
+      Parameters:
+        RootStackName: !Ref AWS::StackName
+        WebsiteDistributionDomainName: !GetAtt WebsiteDistribution.DomainName
+        TestUserName: !Ref TestUserName
+        AdminUserName: !Ref AdminUserName
+
   AdminApiApp:
     Type: AWS::Serverless::Application
     Properties:
@@ -180,6 +140,8 @@ Resources:
         PeriodicReferenceFunctionArn: !GetAtt PeriodicReferenceApp.Outputs.PeriodicReferenceFunctionArn
         UserPrefsTitleIngestionFunctionArn: !GetAtt UserPrefsTitleIngestionApp.Outputs.UserPrefsTitleIngestionFunctionArn
         TitleEnrichmentFunctionArn: !GetAtt TitleEnrichmentApp.Outputs.TitleEnrichmentFunctionArn
+        UserPoolArn: !GetAtt CognitoApp.Outputs.UserPoolArn
+        WebsiteDomain: !GetAtt WebsiteDistribution.DomainName
 
   PeriodicReferenceApp:
     Type: AWS::Serverless::Application
@@ -218,7 +180,7 @@ Resources:
       Parameters:
         ProgramDataTableName: !Ref ProgrammesTable
         ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
-        UserPoolArn: !GetAtt UserPreferencesUserPool.Arn
+        UserPoolArn: !GetAtt CognitoApp.Outputs.UserPoolArn
 
   UserPrefsTitleIngestionApp:
     Type: AWS::Serverless::Application
@@ -239,12 +201,15 @@ Resources:
       Parameters:
         ProgramDataTableName: !Ref ProgrammesTable
         ProgramDataTableArn: !GetAtt ProgrammesTable.Arn
-        UserPoolArn: !GetAtt UserPreferencesUserPool.Arn
+        UserPoolArn: !GetAtt CognitoApp.Outputs.UserPoolArn
 
 Outputs:
   AdminApiEndpoint:
     Description: "The Admin API endpoint URL"
     Value: !GetAtt AdminApiApp.Outputs.ApiEndpoint
+  AdminUsername:
+    Description: "The username of the pre-created admin user"
+    Value: !GetAtt CognitoApp.Outputs.AdminUsername
   PeriodicReferenceFunctionName:
     Description: "Name of the Periodic Reference Data Lambda function"
     Value: !GetAtt PeriodicReferenceApp.Outputs.PeriodicReferenceFunctionName
@@ -259,22 +224,22 @@ Outputs:
     Value: !Ref ProgrammesTable
   TestScriptUserPoolClientId:
     Description: "The ID of the Cognito User Pool App Client for test scripts"
-    Value: !Ref TestScriptUserPoolClient
+    Value: !GetAtt CognitoApp.Outputs.TestScriptUserPoolClientId
   TestUsername:
     Description: "The username of the pre-created test user"
-    Value: !Ref TestUserName
+    Value: !GetAtt CognitoApp.Outputs.TestUsername
   UserPreferencesApiEndpoint:
     Description: "The User Preferences API endpoint URL"
     Value: !GetAtt UserPreferencesApp.Outputs.ApiEndpoint
   UserPoolClientId:
     Description: "The ID of the Cognito User Pool App Client for the web app"
-    Value: !Ref UserPreferencesUserPoolClient
+    Value: !GetAtt CognitoApp.Outputs.UserPoolClientId
   UserPoolDomain:
     Description: "The domain of the Cognito User Pool"
-    Value: !Ref UserPoolDomain
+    Value: !GetAtt CognitoApp.Outputs.UserPoolDomain
   UserPoolId:
     Description: "The ID of the Cognito User Pool"
-    Value: !Ref UserPreferencesUserPool
+    Value: !GetAtt CognitoApp.Outputs.UserPoolId
   WebApiEndpoint:
     Description: "The Web API endpoint URL"
     Value: !GetAtt WebApiApp.Outputs.ApiEndpoint

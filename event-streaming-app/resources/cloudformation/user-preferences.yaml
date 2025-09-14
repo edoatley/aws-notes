@@ -18,10 +18,6 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
-      Auth:
-        Authorizers:
-          CognitoAuthorizer:
-            UserPoolArn: !Ref UserPoolArn
       DefinitionBody:
         openapi: "3.0.1"
         info:
@@ -104,6 +100,10 @@ Resources:
               name: Authorization
               in: header
               x-amazon-apigateway-authtype: cognito_user_pools
+              x-amazon-apigateway-authorizer:
+                type: cognito_user_pools
+                providerARNs:
+                  - !Ref UserPoolArn
           schemas:
             UserPreferences:
               type: object

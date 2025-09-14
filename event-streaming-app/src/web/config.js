@@ -1,10 +1,10 @@
 window.appConfig = {
     Auth: {
-        userPoolId: "eu-west-2_NM1gGgGrq",
-        userPoolClientId: "38dmu7mrljf5dqu678ofnf794b",
+        userPoolId: "eu-west-2_QKJf7VD74",
+        userPoolClientId: "35bfrtilh7u82u1s6678e3sipv",
         region: "eu-west-2",
         oauth: {
-            domain: "uktv-event-streaming-app-user-pool-727361020121.auth.eu-west-2.amazoncognito.com",
+            domain: "uktv-guide-4b1a1500-917f-11f0-ae90-0a677997a123.auth.eu-west-2.amazoncognito.com",
             scope: ['openid', 'email', 'profile'],
             redirectSignIn: "", // Not used in this flow, but good to have
             redirectSignOut: "", // Not used in this flow

@@ -21,8 +21,28 @@ Parameters:
   TitleEnrichmentFunctionArn:
     Type: String
     Description: "ARN of the Title Enrichment function to invoke."
+  UserPoolArn:
+    Type: String
+    Description: "ARN of the Cognito User Pool for authorization."
+  WebsiteDomain:
+    Type: String
+    Description: "The domain name of the website distribution."
 
 Resources:
+  AdminApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: 'POST, GET, OPTIONS'
+        AllowHeaders: 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+        AllowOrigin: !Sub "https://${WebsiteDomain}"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !Ref UserPoolArn
+
   AdminLambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -66,16 +86,6 @@ Resources:
                   - !Ref UserPrefsTitleIngestionFunctionArn
                   - !Ref TitleEnrichmentFunctionArn
 
-  ServerlessRestApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      StageName: Prod
-      EndpointConfiguration: REGIONAL
-      Cors:
-        AllowMethods: "'GET,POST,OPTIONS'"
-        AllowHeaders: "'Content-Type,Authorization'"
-        AllowOrigin: "'*'" # Adjust for security
-
   AdminLambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -97,29 +107,37 @@ Resources:
         AdminApiGetSummary:
           Type: Api
           Properties:
-            Path: /admin/system/dynamodb/summary
+            RestApiId: !Ref AdminApi
+            Path: /system/dynamodb/summary
             Method: get
-            RestApiId: !Ref ServerlessRestApi
+            Auth:
+              Authorizer: CognitoAuthorizer
         AdminApiPostReferenceRefresh:
           Type: Api
           Properties:
-            Path: /admin/data/reference/refresh
+            RestApiId: !Ref AdminApi
+            Path: /data/reference/refresh
             Method: post
-            RestApiId: !Ref ServerlessRestApi
+            Auth:
+              Authorizer: CognitoAuthorizer
         AdminApiPostTitleRefresh:
           Type: Api
           Properties:
-            Path: /admin/data/titles/refresh
+            RestApiId: !Ref AdminApi
+            Path: /data/titles/refresh
             Method: post
-            RestApiId: !Ref ServerlessRestApi
+            Auth:
+              Authorizer: CognitoAuthorizer
         AdminApiPostTitleEnrich:
           Type: Api
           Properties:
-            Path: /admin/data/titles/enrich
+            RestApiId: !Ref AdminApi
+            Path: /data/titles/enrich
             Method: post
-            RestApiId: !Ref ServerlessRestApi
+            Auth:
+              Authorizer: CognitoAuthorizer
 
 Outputs:
   ApiEndpoint:
     Description: "The Admin API endpoint URL"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+    Value: !Sub "https://${AdminApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"

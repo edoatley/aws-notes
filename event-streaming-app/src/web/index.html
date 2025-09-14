@@ -6,45 +6,7 @@
     <title>UK TV Guide</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .title-card {
-            transition: transform 0.2s;
-            cursor: pointer;
-        }
-        .title-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        .title-image {
-            height: 300px;
-            object-fit: cover;
-        }
-        .rating-badge {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(255, 193, 7, 0.9);
-            color: #000;
-            padding: 5px 10px;
-            border-radius: 20px;
-            font-weight: bold;
-        }
-        .loading {
-            display: none;
-        }
-        .auth-section {
-            display: none;
-        }
-        .main-content {
-            display: none;
-        }
-        .preferences-section {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-    </style>
+    <link href="css/style.css" rel="stylesheet">
 </head>
 <body>
 <!-- Navigation -->
@@ -53,18 +15,11 @@
         <a class="navbar-brand" href="#">
             <i class="fas fa-tv me-2"></i>UK TV Guide
         </a>
-        <!-- Main Navigation (for authenticated users) -->
-        <ul class="navbar-nav me-auto mb-2 mb-lg-0" id="mainNav" style="display: none;">
-            <li class="nav-item">
-                <a class="nav-link active" href="#" id="nav-titles">Titles</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#" id="nav-preferences">Preferences</a>
-            </li>
-        </ul>
         <div class="navbar-nav ms-auto">
-            <button id="loginBtn" class="btn btn-outline-light me-2">
-                <i class="fas fa-sign-in-alt me-1"></i>Login
+            <a id="adminNav" class="nav-link me-3" href="#/admin" style="display: none;"><i class="fas fa-user-shield me-1"></i>Admin</a>
+            <span id="user-greeting" class="navbar-text me-3" style="display: none;"></span>
+            <button id="loginBtn" class="btn btn-outline-light me-2" style="display: none;">
+                <i class="fas fa-sign-in-alt me-1"></i>Sign In
             </button>
             <button id="logoutBtn" class="btn btn-outline-light" style="display: none;">
                 <i class="fas fa-sign-out-alt me-1"></i>Logout
@@ -73,107 +28,8 @@
     </div>
 </nav>
 
-<!-- Authentication Section -->
-<div id="authSection" class="auth-section container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h4 class="text-center">Sign In</h4>
-                </div>
-                <div class="card-body">
-                    <p class="text-center">Please log in to continue.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Main Content -->
-<div id="mainContent" class="main-content container mt-4">
-
-    <!-- Titles Page -->
-    <div id="titlesPage">
-        <!-- Navigation Tabs -->
-        <ul class="nav nav-tabs mb-4" id="contentTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="titles-tab" data-bs-toggle="tab" data-bs-target="#titles" type="button" role="tab">
-                    <i class="fas fa-list me-1"></i>All Titles
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="recommendations-tab" data-bs-toggle="tab" data-bs-target="#recommendations" type="button" role="tab">
-                    <i class="fas fa-star me-1"></i>Recommendations
-                </button>
-            </li>
-        </ul>
-
-        <!-- Tab Content -->
-        <div class="tab-content" id="contentTabContent">
-            <!-- Titles Tab -->
-            <div class="tab-pane fade show active" id="titles" role="tabpanel">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4>Available Titles</h4>
-                    <div class="loading" id="titlesLoading">
-                        <div class="spinner-border spinner-border-sm" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
-                </div>
-                <div id="titlesContainer" class="row"></div>
-            </div>
-
-            <!-- Recommendations Tab -->
-            <div class="tab-pane fade" id="recommendations" role="tabpanel">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4>New Recommendations</h4>
-                    <div class="loading" id="recommendationsLoading">
-                        <div class="spinner-border spinner-border-sm" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
-                </div>
-                <div id="recommendationsContainer" class="row"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Preferences Page -->
-    <div id="preferencesPage" style="display: none;">
-        <div class="preferences-section">
-            <h4><i class="fas fa-cog me-2"></i>Your Preferences</h4>
-            <div class="row">
-                <div class="col-md-6">
-                    <h6>Streaming Sources</h6>
-                    <div class="mb-3">
-                        <strong>Selected:</strong>
-                        <div id="selectedSourcesList"></div>
-                    </div>
-                    <hr>
-                    <div class="mb-3">
-                        <strong>Available to add:</strong>
-                        <div id="availableSourcesList"></div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <h6>Genres</h6>
-                    <div class="mb-3">
-                        <strong>Selected:</strong>
-                        <div id="selectedGenresList"></div>
-                    </div>
-                    <hr>
-                    <div class="mb-3">
-                        <strong>Available to add:</strong>
-                        <div id="availableGenresList"></div>
-                    </div>
-                </div>
-            </div>
-            <button id="updatePreferencesBtn" class="btn btn-primary">
-                <i class="fas fa-save me-1"></i>Update Preferences
-            </button>
-        </div>
-    </div>
-</div>
+<!-- Main Application Container -->
+<div id="app" class="container mt-4"></div>
 
 <!-- Title Detail Modal -->
 <div class="modal fade" id="titleModal" tabindex="-1">
@@ -211,7 +67,14 @@
 
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="config.js"></script>
-<script src="app.js"></script>
+<!-- The following config file is generated by a build script -->
+<script src="js/generated-config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/views/loginView.js"></script>
+<script src="js/views/mainView.js"></script>
+<script src="js/views/adminView.js"></script>
+<script src="js/router.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

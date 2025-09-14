@@ -1,5 +1,3 @@
-# /resources/cloudformation/web-api.yaml
-
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: "Web API Lambda for serving data to the SPA"
@@ -16,7 +14,25 @@ Parameters:
     Default: Prod
 
 Resources:
-  # Lambda backing the web api
+  WebApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref StageName
+      Cors:
+        AllowMethods: 'GET,POST,PUT,DELETE,OPTIONS'
+        AllowHeaders: 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'
+        AllowOrigin: '*'
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !Ref UserPoolArn
+        ApiKeyRequired: true # Require an API key on all routes by default
+        UsagePlan:
+          CreateUsagePlan: PER_API
+          UsagePlanName: !Sub "${AWS::StackName}-web-api-usage-plan"
+
+
   WebApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -38,153 +54,59 @@ Resources:
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref ProgramDataTableName
+
           AWS_ENDPOINT_URL: "" # for testing
       Events:
-        ApiEvent:
+        GetSources:
           Type: Api
           Properties:
-            Path: '/{proxy+}'
-            Method: ANY
             RestApiId: !Ref WebApi
-
-  # The API Gateway for the Web API
-  WebApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      StageName: !Sub ${StageName}
-      # Add a global CORS configuration to handle preflight requests and add CORS headers.
-      Cors:
-        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-        AllowHeaders: "'Content-Type,Authorization'"
-        AllowOrigin: "'*'"
-      Auth:
-        UsagePlan:
-          CreateUsagePlan: PER_API
-          Description: "Usage plan for WebApi"
-
-      DefinitionBody:
-        openapi: "3.0.1"
-        info:
-          title: "UK TV Guide Web API"
-          version: "1.0"
-        paths:
-          # --- Public Endpoints ---
-          /sources:
-            get:
-              summary: "Get all available sources"
-              x-amazon-apigateway-integration:
-                type: "aws_proxy"
-                httpMethod: "POST"
-                uri:
-                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebApiFunction.Arn}/invocations"
-              responses:
-                "200":
-                  description: "A list of all available sources"
-          /genres:
-            get:
-              summary: "Get all available genres"
-              x-amazon-apigateway-integration:
-                type: "aws_proxy"
-                httpMethod: "POST"
-                uri:
-                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebApiFunction.Arn}/invocations"
-              responses:
-                "200":
-                  description: "A list of all available genres"
-
-          # --- Protected Endpoints ---
-          # These endpoints require BOTH a Cognito JWT for user authentication
-          # AND an API Key for usage plan tracking.
-          # UPDATE: The API Key requirement has been set to false (`x-amazon-apigateway-api-key-required: false`).
-          # This allows the browser-based Single Page Application (SPA) to call these endpoints
-          # without embedding a secret API key. The Cognito JWT remains the primary security
-          # mechanism for authenticating the user. API keys can still be sent by other clients
-          # (like test scripts) and will be tracked by the Usage Plan.
-          /titles:
-            get:
-              summary: "Get titles based on user preferences"
-              security:
-                - CognitoAuthorizer: []
-              x-amazon-apigateway-api-key-required: false
-              x-amazon-apigateway-integration:
-                type: "aws_proxy"
-                httpMethod: "POST"
-                uri:
-                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebApiFunction.Arn}/invocations"
-              responses:
-                "200":
-                  description: "A list of titles matching user preferences"
-          /recommendations:
-            get:
-              summary: "Get new recommendations for the user"
-              security:
-                - CognitoAuthorizer: []
-              x-amazon-apigateway-api-key-required: false
-              x-amazon-apigateway-integration:
-                type: "aws_proxy"
-                httpMethod: "POST"
-                uri:
-                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebApiFunction.Arn}/invocations"
-              responses:
-                "200":
-                  description: "A list of new recommendations"
-          /preferences:
-            get:
-              summary: "Get user preferences"
-              security:
-                - CognitoAuthorizer: []
-              x-amazon-apigateway-api-key-required: false
-              x-amazon-apigateway-integration:
-                type: "aws_proxy"
-                httpMethod: "POST"
-                uri:
-                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebApiFunction.Arn}/invocations"
-              responses:
-                "200":
-                  description: "User's preferences"
-            put:
-              summary: "Update user preferences"
-              security:
-                - CognitoAuthorizer: []
-              x-amazon-apigateway-api-key-required: false
-              x-amazon-apigateway-integration:
-                type: "aws_proxy"
-                httpMethod: "POST"
-                uri:
-                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebApiFunction.Arn}/invocations"
-              responses:
-                "200":
-                  description: "Confirmation of update"
-
-        components:
-          securitySchemes:
-            # Security scheme for authenticating end-users via Cognito.
-            # The JWT is passed in the 'Authorization' header.
-            # This provides the user's identity ('sub' claim) to the backend Lambda.
-            CognitoAuthorizer:
-              type: "apiKey"
-              name: "Authorization"
-              in: "header"
-              x-amazon-apigateway-authtype: "cognito_user_pools"
-              x-amazon-apigateway-authorizer:
-                type: "cognito_user_pools"
-                providerARNs:
-                  - !Ref UserPoolArn
-
-            # This defines that an API key is expected in the 'x-api-key' header.
-            # It is not used as a direct authorizer, but enables the 'x-amazon-apigateway-api-key-required: true'
-            # property on methods, which links them to a Usage Plan for throttling and quotas.
-            ApiKeyAuthorizer:
-              type: "apiKey"
-              name: "x-api-key" # Standard header for API keys
-              in: "header"
-
-  WebApiTestApiKeySecret:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: !Sub "${AWS::StackName}/WebApiTestApiKey"
-      Description: API key for Web API testing
-      SecretString: !Ref WebApi.ApiKey
+            Path: /sources
+            Method: get
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false # This is a public endpoint
+        GetGenres:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WebApi
+            Path: /genres
+            Method: get
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false # This is a public endpoint
+        GetTitles:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WebApi
+            Path: /titles
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
+        GetRecommendations:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WebApi
+            Path: /recommendations
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
+        GetPreferences:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WebApi
+            Path: /preferences
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
+        UpdatePreferences:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WebApi
+            Path: /preferences
+            Method: put
+            Auth:
+              Authorizer: CognitoAuthorizer
 
 Outputs:
   ApiEndpoint:
