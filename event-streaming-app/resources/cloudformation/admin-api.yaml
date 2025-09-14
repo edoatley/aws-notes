@@ -12,6 +12,15 @@ Parameters:
   ProgrammesTableArn:
     Type: String
     Description: "ARN of the DynamoDB table for programmes."
+  PeriodicReferenceFunctionArn:
+    Type: String
+    Description: "ARN of the Periodic Reference function to invoke."
+  UserPrefsTitleIngestionFunctionArn:
+    Type: String
+    Description: "ARN of the User Prefs Title Ingestion function to invoke."
+  TitleEnrichmentFunctionArn:
+    Type: String
+    Description: "ARN of the Title Enrichment function to invoke."
 
 Resources:
   AdminLambdaExecutionRole:
@@ -53,9 +62,19 @@ Resources:
                 Action:
                   - lambda:InvokeFunction
                 Resource:
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function/${RootStackName}-periodic-reference-PeriodicReferenceApp"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function/${RootStackName}-userprefs-title-ingestion-UserPrefsTitleIngestionApp"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function/${RootStackName}-title-enrichment-TitleEnrichmentApp"
+                  - !Ref PeriodicReferenceFunctionArn
+                  - !Ref UserPrefsTitleIngestionFunctionArn
+                  - !Ref TitleEnrichmentFunctionArn
+
+  ServerlessRestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      EndpointConfiguration: REGIONAL
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'" # Adjust for security
 
   AdminLambdaFunction:
     Type: AWS::Serverless::Function
@@ -71,9 +90,9 @@ Resources:
         Variables:
           PROGRAMMES_TABLE_NAME: !Ref ProgrammesTableName
           PROGRAMMES_TABLE_ARN: !Ref ProgrammesTableArn
-          REFERENCE_DATA_LAMBDA_NAME: !Sub "${RootStackName}-periodic-reference-PeriodicReferenceApp"
-          TITLE_DATA_REFRESH_LAMBDA_NAME: !Sub "${RootStackName}-userprefs-title-ingestion-UserPrefsTitleIngestionApp"
-          TITLE_ENRICHMENT_LAMBDA_NAME: !Sub "${RootStackName}-title-enrichment-TitleEnrichmentApp"
+          REFERENCE_DATA_LAMBDA_ARN: !Ref PeriodicReferenceFunctionArn
+          TITLE_DATA_REFRESH_LAMBDA_ARN: !Ref UserPrefsTitleIngestionFunctionArn
+          TITLE_ENRICHMENT_LAMBDA_ARN: !Ref TitleEnrichmentFunctionArn
       Events:
         AdminApiGetSummary:
           Type: Api
@@ -99,16 +118,6 @@ Resources:
             Path: /admin/data/titles/enrich
             Method: post
             RestApiId: !Ref ServerlessRestApi
-
-  ServerlessRestApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      StageName: Prod
-      EndpointConfiguration: REGIONAL
-      Cors:
-        AllowMethods: "'GET,POST,OPTIONS'"
-        AllowHeaders: "'Content-Type,Authorization'"
-        AllowOrigin: "'*'" # Adjust for security
 
 Outputs:
   ApiEndpoint:

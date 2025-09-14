@@ -77,6 +77,14 @@ sam build --use-container
 ########################################################################################################################
 echo "🚀 Step 4: Deploying changes to the stack '$STACK_NAME'..."
 ########################################################################################################################
+# Check if WATCHMODE_API_KEY is set
+if [ -z "$WATCHMODE_API_KEY" ]; then
+    echo "❌ Error: WATCHMODE_API_KEY environment variable is not set."
+    echo "Please set it before running this script:"
+    echo "export WATCHMODE_API_KEY='your-api-key-here'"
+    exit 1
+fi
+
 sam deploy \
     --stack-name "$STACK_NAME" \
     --profile "$PROFILE" \
@@ -127,9 +135,10 @@ USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --q
 USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 USER_POOL_DOMAIN=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolDomain'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 WEB_API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebApiEndpoint'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+ADMIN_API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='AdminApiEndpoint'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 
 # Validate that all required outputs were fetched
-if [ -z "$WEBSITE_BUCKET" ] || [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ] || [ -z "$USER_POOL_DOMAIN" ] || [ -z "$WEB_API_ENDPOINT" ]; then
+if [ -z "$WEBSITE_BUCKET" ] || [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ] || [ -z "$USER_POOL_DOMAIN" ] || [ -z "$WEB_API_ENDPOINT" ] || [ -z "$ADMIN_API_ENDPOINT" ]; then
     echo "❌ Error: Failed to retrieve one or more required outputs from the CloudFormation stack."
     echo "Please check the stack '$STACK_NAME' in the AWS console and ensure it deployed successfully with all outputs."
     exit 1
@@ -153,7 +162,8 @@ window.appConfig = {
             responseType: 'token'
         }
     },
-    ApiEndpoint: "${WEB_API_ENDPOINT}"
+    ApiEndpoint: "${WEB_API_ENDPOINT}",
+    AdminApiEndpoint: "${ADMIN_API_ENDPOINT}"
 };
 EOF
 echo "✅ Config file created."

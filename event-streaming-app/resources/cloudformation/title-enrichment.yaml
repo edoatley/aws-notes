@@ -77,3 +77,8 @@ Resources:
           AWS_ENDPOINT_URL: "" # for testing
     Metadata:
       BuildMethod: python3.12
+
+Outputs:
+  TitleEnrichmentFunctionArn:
+    Description: "ARN of the Title Enrichment Lambda function"
+    Value: !GetAtt TitleEnrichmentFunction.Arn

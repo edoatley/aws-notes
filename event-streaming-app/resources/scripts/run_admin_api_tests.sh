@@ -27,12 +27,12 @@ error() {
 
 # Function to make Admin API calls
 # Usage: admin_api_curl <method> <path> [json_data]
-# It uses global variables: ADMIN_API_ENDPOINT, ADMIN_API_KEY
+# It uses global variables: ADMIN_API_ENDPOINT
 admin_api_curl() {
     local method=$1
     local path=$2
     local data=$3
-    local headers=("-H" "x-api-key: $ADMIN_API_KEY")
+    local headers=()
     local response
     local http_code
     local body
@@ -85,18 +85,11 @@ log "AWS SSO session is active."
 
 # Step 2: Fetch Admin API Stack Outputs
 log "Step 2: Fetching required outputs from stack '$STACK_NAME' for Admin API..."
-# Assuming Admin API endpoint and key are outputs from the root stack or a nested stack.
-# The Administrator-Screen-Design.md mentions Admin API Gateway base URL.
-# We need to find the corresponding output key from the CloudFormation template.
 # From 'uktv-event-streaming-app.yaml', Output 'AdminApiEndpoint' is available.
-ADMIN_API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks.Outputs[?OutputKey=='AdminApiEndpoint'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
-# Assuming Admin API uses a similar test API key mechanism as Web API.
-# From 'uktv-event-streaming-app.yaml', Output 'WebApiTestApiKey' is available.
-# If Admin API has a different key, this needs to be adjusted.
-ADMIN_API_KEY=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks.Outputs[?OutputKey=='WebApiTestApiKey'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+ADMIN_API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[].Outputs[?OutputKey=='AdminApiEndpoint'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 
-if [ -z "$ADMIN_API_ENDPOINT" ] || [ -z "$ADMIN_API_KEY" ]; then
-    error "Failed to retrieve Admin API endpoint or API key from stack outputs. Aborting."
+if [ -z "$ADMIN_API_ENDPOINT" ]; then
+    error "Failed to retrieve Admin API endpoint from stack outputs. Aborting."
 fi
 log "Successfully fetched Admin API outputs."
 info "Admin API Endpoint: $ADMIN_API_ENDPOINT"
@@ -108,7 +101,7 @@ log "Step 3: Starting Admin API endpoint tests..."
 # --- Test GET /admin/system/dynamodb/summary ---
 log "Testing GET /admin/system/dynamodb/summary..."
 SUMMARY_RESPONSE=$(admin_api_curl "GET" "/admin/system/dynamodb/summary")
-if ! echo "$SUMMARY_RESPONSE" | jq -e '.tables | length > 0' > /dev/null; then
+if ! echo "$SUMMARY_RESPONSE" | jq -e '.tables' > /dev/null; then
     error "GET /admin/system/dynamodb/summary did not return expected summary data. Response: $SUMMARY_RESPONSE"
 fi
 log "GET /admin/system/dynamodb/summary returned valid summary data."

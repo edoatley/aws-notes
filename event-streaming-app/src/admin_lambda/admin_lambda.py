@@ -1,25 +1,20 @@
 import json
 import boto3
 import os
-import uuid # Import uuid for job ID generation
+import uuid
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 lambda_client = boto3.client('lambda')
 
 # --- Configuration ---
-# Table names identified from CloudFormation
-# Note: The design doc mentions SourcesTable and TitlesTable for summary,
-# but only ProgrammesTable is explicitly defined in the root template.
-# We will use ProgrammesTable for now. If other tables are needed for summary,
-# they would need to be defined or discovered.
-PROGRAMMES_TABLE_NAME = os.environ.get('PROGRAMMES_TABLE_NAME', 'UKTVProgrammes') # Default from CloudFormation parameter
+PROGRAMMES_TABLE_NAME = os.environ.get('PROGRAMMES_TABLE_NAME', 'UKTVProgrammes')
 
-# Lambda function names identified from nested CloudFormation templates
+# Lambda function ARNs from environment variables (set by CloudFormation)
 LAMBDA_FUNCTIONS = {
-    "reference_data_refresh": "PeriodicUKTVReferenceFunction",
-    "title_data_refresh": "PeriodicUKTitlesForUserPrefsFunction",
-    "title_enrichment": "TitleEnrichmentFunction"
+    "reference_data_refresh": os.environ.get('REFERENCE_DATA_LAMBDA_ARN'),
+    "title_data_refresh": os.environ.get('TITLE_DATA_REFRESH_LAMBDA_ARN'),
+    "title_enrichment": os.environ.get('TITLE_ENRICHMENT_LAMBDA_ARN')
 }
 
 # --- Helper Functions ---
@@ -27,24 +22,19 @@ LAMBDA_FUNCTIONS = {
 def get_dynamodb_summary():
     """
     Retrieves summary information for DynamoDB tables.
-    Currently focuses on ProgrammesTable.
     """
     summary = {"tables": []}
     try:
-        # Get item count for the ProgrammesTable
-        table = dynamodb.Table(PROGRAMMES_TABLE_NAME)
-        item_count_response = table.item_count
-        item_count = item_count_response.get('ItemCount')
-
-        # Getting table size is not directly available via item_count.
-        # For a more accurate size, one might need to scan or use CloudWatch metrics.
-        # For this design, we'll stick to item_count as a primary metric.
-        # If table size is critical, further implementation is needed.
+        table_description = dynamodb.meta.client.describe_table(TableName=PROGRAMMES_TABLE_NAME)
+        table_info = table_description['Table']
+        
+        item_count = table_info.get('ItemCount', 0)
+        table_size_bytes = table_info.get('TableSizeBytes', 0)
 
         summary["tables"].append({
             "name": PROGRAMMES_TABLE_NAME,
             "item_count": item_count,
-            "size_bytes": "N/A" # Placeholder for size, as it's not directly available here
+            "size_bytes": table_size_bytes
         })
         summary["message"] = "DynamoDB data summary retrieved successfully."
         return summary, 200
@@ -57,34 +47,37 @@ def get_dynamodb_summary():
         print(f"Error: {error_message}")
         return {"message": error_message, "tables": []}, 500
 
-def trigger_lambda_function(function_name, payload=None):
+def trigger_lambda_function(function_arn, payload=None):
     """
-    Triggers another Lambda function asynchronously and returns a job ID.
+    Triggers another Lambda function asynchronously using its ARN and returns a job ID.
     """
-    job_id = str(uuid.uuid4()) # Generate a unique job ID
+    job_id = str(uuid.uuid4())
+    
+    if not function_arn:
+        error_message = "Lambda function ARN is not configured."
+        print(f"Error: {error_message}")
+        return {"message": error_message}, 500
+        
     try:
         if payload is None:
             payload = {}
         
-        # Add job_id to the payload for tracking if needed by the target function
         payload['job_id'] = job_id
 
-        response = lambda_client.invoke(
-            FunctionName=function_name,
+        lambda_client.invoke(
+            FunctionName=function_arn,
             InvocationType='Event',  # Asynchronous invocation
             Payload=json.dumps(payload)
         )
-        print(f"Successfully invoked Lambda function: {function_name} with job ID: {job_id}")
+        print(f"Successfully invoked Lambda function: {function_arn} with job ID: {job_id}")
         
-        # The response for 'Event' invocation type is empty on success,
-        # so we return the generated job_id.
-        return {"message": f"Lambda function '{function_name}' initiated.", "job_id": job_id}, 202
+        return {"message": f"Lambda function '{function_arn}' initiated.", "job_id": job_id}, 202
     except lambda_client.exceptions.ResourceNotFoundException:
-        error_message = f"Lambda function '{function_name}' not found."
+        error_message = f"Lambda function with ARN '{function_arn}' not found."
         print(f"Error: {error_message}")
         return {"message": error_message}, 404
     except Exception as e:
-        error_message = f"Error invoking Lambda function {function_name}: {str(e)}"
+        error_message = f"Error invoking Lambda function {function_arn}: {str(e)}"
         print(f"Error: {error_message}")
         return {"message": error_message}, 500
 
@@ -99,9 +92,6 @@ def lambda_handler(event, context):
 
     http_method = event.get('httpMethod')
     path = event.get('path')
-    
-    # API Gateway proxy integration expects a specific response format
-    # https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html#api-gateway-simple-proxy-for-lambda-output-format
     
     response_body = {"message": "Not Found"}
     status_code = 404

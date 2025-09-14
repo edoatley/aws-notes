@@ -177,6 +177,9 @@ Resources:
         RootStackName: !Ref AWS::StackName
         ProgrammesTableName: !Ref ProgrammesTable
         ProgrammesTableArn: !GetAtt ProgrammesTable.Arn
+        PeriodicReferenceFunctionArn: !GetAtt PeriodicReferenceApp.Outputs.PeriodicReferenceFunctionArn
+        UserPrefsTitleIngestionFunctionArn: !GetAtt UserPrefsTitleIngestionApp.Outputs.UserPrefsTitleIngestionFunctionArn
+        TitleEnrichmentFunctionArn: !GetAtt TitleEnrichmentApp.Outputs.TitleEnrichmentFunctionArn
 
   PeriodicReferenceApp:
     Type: AWS::Serverless::Application

@@ -3,7 +3,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- Configuration ---
     // Fetch API endpoint from config.js
-    const adminApiBaseUrl = typeof ADMIN_API_ENDPOINT !== 'undefined' ? ADMIN_API_ENDPOINT : '/api/admin'; // Fallback if not configured
+    const adminApiBaseUrl = typeof window.appConfig !== 'undefined' && window.appConfig.AdminApiEndpoint ? window.appConfig.AdminApiEndpoint : '/api/admin'; // Fallback if not configured
 
     // --- DOM Elements ---
     const adminScreen = document.getElementById('admin-screen'); // Assuming a main container for admin UI

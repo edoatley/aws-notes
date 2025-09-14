@@ -1,7 +1,7 @@
 window.appConfig = {
     Auth: {
-        userPoolId: "eu-west-2_0SgNyOMRl",
-        userPoolClientId: "48qqc3sa0godfbinfdpqvqje2j",
+        userPoolId: "eu-west-2_NM1gGgGrq",
+        userPoolClientId: "38dmu7mrljf5dqu678ofnf794b",
         region: "eu-west-2",
         oauth: {
             domain: "uktv-event-streaming-app-user-pool-727361020121.auth.eu-west-2.amazoncognito.com",
@@ -11,5 +11,6 @@ window.appConfig = {
             responseType: 'token'
         }
     },
-    ApiEndpoint: "https://z1mfsic4b7.execute-api.eu-west-2.amazonaws.com/Prod"
+    ApiEndpoint: "https://9pu1jw5gac.execute-api.eu-west-2.amazonaws.com/Prod",
+    AdminApiEndpoint: "https://xaphfzgz94.execute-api.eu-west-2.amazonaws.com/Prod"
 };
