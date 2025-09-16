@@ -141,7 +141,6 @@ Resources:
         UserPrefsTitleIngestionFunctionArn: !GetAtt UserPrefsTitleIngestionApp.Outputs.UserPrefsTitleIngestionFunctionArn
         TitleEnrichmentFunctionArn: !GetAtt TitleEnrichmentApp.Outputs.TitleEnrichmentFunctionArn
         UserPoolArn: !GetAtt CognitoApp.Outputs.UserPoolArn
-        WebsiteDomain: !GetAtt WebsiteDistribution.DomainName
 
   PeriodicReferenceApp:
     Type: AWS::Serverless::Application
@@ -245,7 +244,7 @@ Outputs:
     Value: !GetAtt WebApiApp.Outputs.ApiEndpoint
   WebApiTestApiKey:
     Description: "The API key for testing the Web API"
-    Value: !GetAtt WebApiApp.Outputs.WebApiTestApiKey
+    Value: !GetAtt WebApiApp.Outputs.WebApiKeyId
   WebsiteBucket:
     Description: "The S3 bucket hosting the website"
     Value: !Ref WebsiteBucket

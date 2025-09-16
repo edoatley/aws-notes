@@ -24,9 +24,6 @@ Parameters:
   UserPoolArn:
     Type: String
     Description: "ARN of the Cognito User Pool for authorization."
-  WebsiteDomain:
-    Type: String
-    Description: "The domain name of the website distribution."
 
 Resources:
   AdminApi:
@@ -34,9 +31,9 @@ Resources:
     Properties:
       StageName: Prod
       Cors:
-        AllowMethods: 'POST, GET, OPTIONS'
-        AllowHeaders: 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
-        AllowOrigin: !Sub "https://${WebsiteDomain}"
+        AllowMethods: "'GET,PUT,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:

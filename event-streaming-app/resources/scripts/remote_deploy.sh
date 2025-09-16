@@ -6,9 +6,22 @@ set -e
 STACK_NAME="uktv-event-streaming-app"
 PROFILE="streaming"
 REGION="eu-west-2"
+SAM_DEPLOY_ARGS=()
+
+# --- Argument Parsing ---
+# Process command-line arguments and pass them to `sam deploy`.
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --disable-rollback)
+            SAM_DEPLOY_ARGS+=("--disable-rollback")
+            shift # past argument
+            ;;
+        *) echo "Unknown parameter passed: $1" >&2; exit 1 ;;
+    esac
+done
 
 ########################################################################################################################
-echo "🚀 Step 1: Checking AWS SSO session for profile: ${PROFILE}..."
+echo "🚀 Step 1: Refreshing AWS SSO session for profile: ${PROFILE}..."
 ########################################################################################################################
 echo "🔎 Checking AWS SSO session for profile: ${PROFILE}..."
 if ! aws sts get-caller-identity --profile "${PROFILE}" > /dev/null; then
@@ -46,8 +59,8 @@ if [ "$STACK_STATUS" == "ROLLBACK_COMPLETE" ] || [ "$STACK_STATUS" == "DELETE_FA
 
     echo "🧹 Emptying S3 bucket: s3://${WEBSITE_BUCKET}..."
     if aws s3 ls "s3://${WEBSITE_BUCKET}" --profile "${PROFILE}" --region "$REGION" > /dev/null 2>&1; then
-        aws s3 rm "s3://${WEBSITE_BUCKET}" --recursive --profile "$PROFILE" --region "$REGION"
-        aws s3api delete-bucket --bucket "${WEBSITE_BUCKET}" --profile "$PROFILE" --region "$REGION"
+        aws s3 rm "s3://${WEBSITE_BUCKET}" --recursive --profile "${PROFILE}" --region "$REGION"
+        aws s3api delete-bucket --bucket "${WEBSITE_BUCKET}" --profile "${PROFILE}" --region "$REGION"
         echo "✅ Bucket emptied and deleted to be safe."
     else
         echo "✅ Bucket does not exist or is already gone. No action needed."
@@ -82,7 +95,8 @@ sam deploy \
     --profile "$PROFILE" \
     --region "$REGION" \
     --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-    --parameter-overrides "CreateDataStream=true" "WatchModeApiKey=${WATCHMODE_API_KEY}"
+    --parameter-overrides "CreateDataStream=true" "WatchModeApiKey=${WATCHMODE_API_KEY}" \
+    "${SAM_DEPLOY_ARGS[@]}"
 
 echo "✅ Deployment complete. Your changes are now live."
 
