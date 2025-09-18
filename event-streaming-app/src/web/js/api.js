@@ -7,7 +7,7 @@ const api = (() => {
 
             const token = auth.getToken();
             if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
+                headers['Authorization'] = token;
             }
 
             const options = { method, headers };

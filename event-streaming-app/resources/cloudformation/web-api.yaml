@@ -18,10 +18,6 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: !Ref StageName
-      Cors:
-        AllowMethods: "'GET,PUT,OPTIONS'"
-        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-        AllowOrigin: "'*'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
@@ -43,6 +39,35 @@ Resources:
     Properties:
       LogGroupName: !Sub "/aws/api-gateway/${WebApi}"
       RetentionInDays: 7
+
+  CorsOptionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      Runtime: python3.12
+      # This function's only job is to return the correct CORS headers for preflight OPTIONS requests.
+      InlineCode: |
+        import json
+        def handler(event, context):
+            return {
+                "statusCode": 204,
+                "headers": {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                    "Access-Control-Allow-Methods": "GET,PUT,POST,OPTIONS,DELETE"
+                },
+                "body": ""
+            }
+      Events:
+        OptionsCatchAll:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WebApi
+            Path: /{proxy+}
+            Method: options
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
 
   # Explicitly create the API Key
   WebApiKey:
@@ -95,15 +120,6 @@ Resources:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref ProgramDataTableName
       Events:
-        SourcesOptions:
-          Type: Api
-          Properties:
-            RestApiId: !Ref WebApi
-            Path: /sources
-            Method: options
-            Auth:
-              Authorizer: NONE
-              ApiKeyRequired: false
         GetSources:
           Type: Api
           Properties:
@@ -122,24 +138,6 @@ Resources:
             Auth:
               Authorizer: NONE
               ApiKeyRequired: false
-        GenresOptions:
-          Type: Api
-          Properties:
-            RestApiId: !Ref WebApi
-            Path: /genres
-            Method: options
-            Auth:
-              Authorizer: NONE
-              ApiKeyRequired: false
-        TitlesOptions:
-          Type: Api
-          Properties:
-            RestApiId: !Ref WebApi
-            Path: /titles
-            Method: options
-            Auth:
-              Authorizer: NONE
-              ApiKeyRequired: false
         GetTitles:
           Type: Api
           Properties:
@@ -148,7 +146,7 @@ Resources:
             Method: get
             Auth:
               Authorizer: CognitoAuthorizer
-              ApiKeyRequired: true
+              ApiKeyRequired: false
         GetRecommendations:
           Type: Api
           Properties:
@@ -157,24 +155,6 @@ Resources:
             Method: get
             Auth:
               Authorizer: CognitoAuthorizer
-              ApiKeyRequired: true
-        RecommendationsOptions:
-          Type: Api
-          Properties:
-            RestApiId: !Ref WebApi
-            Path: /recommendations
-            Method: options
-            Auth:
-              Authorizer: NONE
-              ApiKeyRequired: false
-        PreferencesOptions:
-          Type: Api
-          Properties:
-            RestApiId: !Ref WebApi
-            Path: /preferences
-            Method: options
-            Auth:
-              Authorizer: NONE
               ApiKeyRequired: false
         GetPreferences:
           Type: Api
@@ -184,7 +164,7 @@ Resources:
             Method: get
             Auth:
               Authorizer: CognitoAuthorizer
-              ApiKeyRequired: true
+              ApiKeyRequired: false
         UpdatePreferences:
           Type: Api
           Properties:
@@ -193,7 +173,7 @@ Resources:
             Method: put
             Auth:
               Authorizer: CognitoAuthorizer
-              ApiKeyRequired: true
+              ApiKeyRequired: false
 
 Outputs:
   ApiEndpoint:
