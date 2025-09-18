@@ -95,6 +95,15 @@ Resources:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref ProgramDataTableName
       Events:
+        SourcesOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WebApi
+            Path: /sources
+            Method: options
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
         GetSources:
           Type: Api
           Properties:
@@ -110,6 +119,24 @@ Resources:
             RestApiId: !Ref WebApi
             Path: /genres
             Method: get
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
+        GenresOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WebApi
+            Path: /genres
+            Method: options
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
+        TitlesOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WebApi
+            Path: /titles
+            Method: options
             Auth:
               Authorizer: NONE
               ApiKeyRequired: false
@@ -131,6 +158,24 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
               ApiKeyRequired: true
+        RecommendationsOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WebApi
+            Path: /recommendations
+            Method: options
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
+        PreferencesOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WebApi
+            Path: /preferences
+            Method: options
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
         GetPreferences:
           Type: Api
           Properties:
