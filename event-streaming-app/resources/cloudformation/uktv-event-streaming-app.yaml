@@ -206,6 +206,9 @@ Outputs:
   AdminApiEndpoint:
     Description: "The Admin API endpoint URL"
     Value: !GetAtt AdminApiApp.Outputs.ApiEndpoint
+  AdminApiKey:
+    Description: "The API key for the Admin API"
+    Value: !GetAtt AdminApiApp.Outputs.ApiKeyId
   AdminUsername:
     Description: "The username of the pre-created admin user"
     Value: !GetAtt CognitoApp.Outputs.AdminUsername

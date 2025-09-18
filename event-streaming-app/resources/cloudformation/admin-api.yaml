@@ -31,14 +31,33 @@ Resources:
     Properties:
       StageName: Prod
       Cors:
-        AllowMethods: "'GET,PUT,OPTIONS'"
+        AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
         AllowOrigin: "'*'"
       Auth:
+        UsagePlan:
+          CreateUsagePlan: PER_API
+          Description: "Usage plan for AdminApi"
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !Ref UserPoolArn
+        ApiKeyRequired: true
+      AccessLogSetting:
+        DestinationArn: !GetAtt AdminApiAccessLogGroup.Arn
+        Format: '{"requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "caller":"$context.identity.caller", "user":"$context.identity.user","requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath", "status":"$context.status","protocol":"$context.protocol", "responseLength":"$context.responseLength"}'
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
+
+  AdminApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/api-gateway/${AdminApi}"
+      RetentionInDays: 7
 
   AdminLambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -69,8 +88,11 @@ Resources:
               - Effect: Allow
                 Action:
                   - dynamodb:DescribeTable
-                  - dynamodb:ListTables
                 Resource: !Ref ProgrammesTableArn
+              - Effect: Allow
+                Action:
+                  - dynamodb:ListTables
+                Resource: "*"
         - PolicyName: AdminLambdaInvokeOtherLambdas
           PolicyDocument:
             Version: '2012-10-17'
@@ -107,34 +129,29 @@ Resources:
             RestApiId: !Ref AdminApi
             Path: /system/dynamodb/summary
             Method: get
-            Auth:
-              Authorizer: CognitoAuthorizer
         AdminApiPostReferenceRefresh:
           Type: Api
           Properties:
             RestApiId: !Ref AdminApi
             Path: /data/reference/refresh
             Method: post
-            Auth:
-              Authorizer: CognitoAuthorizer
         AdminApiPostTitleRefresh:
           Type: Api
           Properties:
             RestApiId: !Ref AdminApi
             Path: /data/titles/refresh
             Method: post
-            Auth:
-              Authorizer: CognitoAuthorizer
         AdminApiPostTitleEnrich:
           Type: Api
           Properties:
             RestApiId: !Ref AdminApi
             Path: /data/titles/enrich
             Method: post
-            Auth:
-              Authorizer: CognitoAuthorizer
 
 Outputs:
   ApiEndpoint:
     Description: "The Admin API endpoint URL"
     Value: !Sub "https://${AdminApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+  ApiKeyId:
+    Description: "API Key ID for the Admin API"
+    Value: !Ref AdminApiApiKey

@@ -8,6 +8,9 @@ set -o pipefail # The return value of a pipeline is the status of the last comma
 STACK_NAME="uktv-event-streaming-app"
 PROFILE="streaming"
 REGION="eu-west-2"
+# This password must match the one in set-cognito-password.sh
+ADMIN_PASSWORD="A-Strong-P@ssw0rd1"
+ID_TOKEN="" # Will be populated after authentication
 
 # --- Helper Functions ---
 log() {
@@ -23,31 +26,71 @@ error() {
     exit 1
 }
 
+diag_header() {
+    echo -e "\n\n========================================================================"
+    echo "🔬 DIAGNOSTIC INFORMATION: $1"
+    echo "========================================================================"
+}
+
 # Function to make Admin API calls
 admin_api_curl() {
     local method=$1
     local path=$2
     local data=$3
     local headers=()
-    local response
-    local http_code
-    local body
+    local BODY_FILE=$(mktemp)
+    local CURL_STDERR_FILE=$(mktemp)
+    local HTTP_CODE
+
+    if [ -z "$ID_TOKEN" ]; then
+        error "ID_TOKEN is not set. Authentication might have failed."
+    fi
+    # Add the identity token from Cognito to the Authorization header.
+    headers+=("-H" "Authorization: ${ID_TOKEN}")
+    # Add the API key required by the API Gateway Usage Plan.
+    headers+=("-H" "x-api-key: ${ADMIN_API_KEY_VALUE}")
 
     if [ -n "$data" ]; then
         headers+=("-H" "Content-Type: application/json")
-        response=$(curl -s -w "\n%{http_code}" -X "$method" "${headers[@]}" -d "$data" "${ADMIN_API_ENDPOINT}${path}")
+        HTTP_CODE=$(curl -v -s -w "%{http_code}" -X "$method" "${headers[@]}" -d "$data" "${ADMIN_API_ENDPOINT}${path}" -o "$BODY_FILE" 2> "$CURL_STDERR_FILE")
     else
-        response=$(curl -s -w "\n%{http_code}" -X "$method" "${headers[@]}" "${ADMIN_API_ENDPOINT}${path}")
+        HTTP_CODE=$(curl -v -s -w "%{http_code}" -X "$method" "${headers[@]}" "${ADMIN_API_ENDPOINT}${path}" -o "$BODY_FILE" 2> "$CURL_STDERR_FILE")
     fi
 
-    http_code=$(tail -n1 <<< "$response")
-    body=$(sed '$ d' <<< "$response")
+    BODY=$(<"$BODY_FILE")
+    CURL_STDERR=$(<"$CURL_STDERR_FILE")
+    rm "$BODY_FILE" "$CURL_STDERR_FILE"
 
-    if ! [[ "$http_code" =~ ^2[0-9]{2}$ ]]; then
-        error "Request to $method $path failed with status $http_code. Body: $body"
+    if ! [[ "$HTTP_CODE" =~ ^2[0-9]{2}$ ]]; then
+        echo "❌ ERROR: Request to $method $path failed with status $HTTP_CODE. Body: $BODY" >&2
+
+        diag_header "Failed Request Details"
+        echo "HTTP Status Code: $HTTP_CODE"
+        echo -e "\n--- Response Body ---\n$BODY"
+        echo -e "\n--- cURL Verbose Output (stderr) ---\n$CURL_STDERR"
+
+        REQUEST_ID=$(echo "$CURL_STDERR" | grep -i '< x-amzn-requestid:' | awk -F': ' '{print $2}' | tr -d '\r')
+
+        if [ -n "$REQUEST_ID" ] && [ -n "$ADMIN_API_ID" ]; then
+            diag_header "CloudWatch Execution Log Analysis"
+            LOG_GROUP_NAME="API-Gateway-Execution-Logs_${ADMIN_API_ID}/Prod"
+            info "Searching for logs with Request ID: $REQUEST_ID in log group $LOG_GROUP_NAME"
+            info "Waiting 10s for logs to propagate..."
+            sleep 10
+            
+            LOGS=$(aws logs filter-log-events --log-group-name "$LOG_GROUP_NAME" --filter-pattern "$REQUEST_ID" --profile "$PROFILE" --region "$REGION" | jq -r '.events[].message')
+            
+            if [ -n "$LOGS" ]; then
+                echo -e "\n--- Found Execution Logs ---\n$LOGS"
+            else
+                echo -e "\n--- No Execution Logs Found ---"
+                echo "Could not find execution logs for request ID '$REQUEST_ID' in log group '$LOG_GROUP_NAME'."
+            fi
+        fi
+        exit 1
     fi
 
-    echo "$body"
+    echo "$BODY"
 }
 
 # --- Main Script ---
@@ -79,16 +122,61 @@ log "AWS SSO session is active."
 
 # Step 2: Fetch Admin API Stack Outputs
 log "Step 2: Fetching required outputs from stack '$STACK_NAME' for Admin API..."
-ADMIN_API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[].Outputs[?OutputKey=='AdminApiEndpoint'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
-PERIODIC_REFERENCE_FUNCTION_NAME=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[].Outputs[?OutputKey=='PeriodicReferenceFunctionName'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
-USER_PREFS_INGESTION_FUNCTION_NAME=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[].Outputs[?OutputKey=='UserPrefsTitleIngestionFunctionName'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
-TITLE_ENRICHMENT_FUNCTION_NAME=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[].Outputs[?OutputKey=='TitleEnrichmentFunctionName'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+STACK_OUTPUTS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs" --profile "$PROFILE" --region "$REGION")
 
-if [ -z "$ADMIN_API_ENDPOINT" ]; then
-    error "Failed to retrieve Admin API endpoint from stack outputs. Aborting."
+get_output_value() {
+    echo "$STACK_OUTPUTS" | jq -r ".[] | select(.OutputKey==\"$1\") | .OutputValue"
+}
+
+ADMIN_API_ENDPOINT=$(get_output_value "AdminApiEndpoint")
+ADMIN_API_KEY_ID=$(get_output_value "AdminApiKey")
+PERIODIC_REFERENCE_FUNCTION_NAME=$(get_output_value "PeriodicReferenceFunctionName")
+USER_PREFS_INGESTION_FUNCTION_NAME=$(get_output_value "UserPrefsTitleIngestionFunctionName")
+TITLE_ENRICHMENT_FUNCTION_NAME=$(get_output_value "TitleEnrichmentFunctionName")
+ADMIN_USERNAME=$(get_output_value "AdminUsername")
+USER_POOL_CLIENT_ID=$(get_output_value "TestScriptUserPoolClientId")
+NESTED_ADMIN_STACK_NAME=$(aws cloudformation describe-stack-resources --stack-name "$STACK_NAME" --logical-resource-id AdminApiApp --query "StackResources[0].PhysicalResourceId" --output text --profile "$PROFILE" | cut -d'/' -f2)
+ADMIN_API_ID=$(aws cloudformation describe-stack-resources --stack-name "$NESTED_ADMIN_STACK_NAME" --logical-resource-id AdminApi --query "StackResources[0].PhysicalResourceId" --output text --profile "$PROFILE")
+
+if [ -z "$ADMIN_API_ENDPOINT" ] || [ -z "$ADMIN_API_KEY_ID" ]; then
+    error "Failed to retrieve Admin API endpoint or API Key from stack outputs. Aborting."
 fi
+
+if [ -z "$ADMIN_API_ID" ]; then
+    info "⚠️ Could not retrieve Admin API ID. CloudWatch log fetching will be disabled."
+fi
+
 log "Successfully fetched API and function details."
 info "Admin API Endpoint: $ADMIN_API_ENDPOINT"
+info "Admin API Key ID: $ADMIN_API_KEY_ID"
+
+log "Step 2.1: Fetching Admin API Key value from its ID..."
+ADMIN_API_KEY_VALUE=$(aws apigateway get-api-key --api-key "$ADMIN_API_KEY_ID" --include-value --query 'value' --output text --profile "$PROFILE" --region "$REGION")
+if [ -z "$ADMIN_API_KEY_VALUE" ]; then
+    error "Could not fetch the value for Admin API Key ID: $ADMIN_API_KEY_ID. Check permissions and if the key exists."
+fi
+log "Successfully fetched Admin API Key value."
+
+# Step 2.5: Authenticate as Admin User to get JWT token
+log "Step 2.5: Authenticating as admin user to get JWT token..."
+if [ -z "$ADMIN_USERNAME" ] || [ -z "$USER_POOL_CLIENT_ID" ]; then
+    error "Could not retrieve Cognito details (AdminUsername, TestScriptUserPoolClientId) from stack outputs."
+fi
+
+info "Attempting to authenticate user: $ADMIN_USERNAME"
+ID_TOKEN=$(aws cognito-idp initiate-auth \
+    --auth-flow USER_PASSWORD_AUTH \
+    --auth-parameters "USERNAME=${ADMIN_USERNAME},PASSWORD=${ADMIN_PASSWORD}" \
+    --client-id "${USER_POOL_CLIENT_ID}" \
+    --query "AuthenticationResult.IdToken" \
+    --output text \
+    --profile "$PROFILE" \
+    --region "$REGION")
+
+if [ -z "$ID_TOKEN" ]; then
+    error "Failed to get ID token from Cognito. Check admin user credentials and Cognito configuration."
+fi
+log "Successfully authenticated and retrieved ID token."
 
 # Step 3: Test Admin API Endpoints
 log "Step 3: Starting Admin API endpoint tests..."

@@ -25,6 +25,12 @@ error() {
     exit 1
 }
 
+diag_header() {
+    echo -e "\n\n========================================================================"
+    echo "🔬 DIAGNOSTIC INFORMATION: $1"
+    echo "========================================================================"
+}
+
 # Function to make API calls
 # Usage: api_curl <method> <path> [json_data] [auth_flag]
 # It uses global variables: API_ENDPOINT, API_KEY, ID_TOKEN
@@ -32,33 +38,103 @@ api_curl() {
     local method=$1
     local path=$2
     local data=$3
-    local auth_required=$4
-    local headers=("-H" "x-api-key: $API_KEY")
-    local response
+    local headers=("-H" "x-api-key: ${API_KEY_VALUE}")
+    local BODY_FILE=$(mktemp)
+    local CURL_STDERR_FILE=$(mktemp)
+    local HTTP_CODE
 
-    if [ "$auth_required" = "true" ]; then
-        if [ -z "$ID_TOKEN" ]; then
-            error "ID_TOKEN is not set for authenticated request to $path"
-        fi
-        headers+=("-H" "Authorization: Bearer $ID_TOKEN")
+    if [ -z "$ID_TOKEN" ]; then
+        error "ID_TOKEN is not set for authenticated request to $path"
+    else
+        headers+=("-H" "Authorization: $ID_TOKEN")
     fi
 
     if [ -n "$data" ]; then
         headers+=("-H" "Content-Type: application/json")
-        response=$(curl -s -w "\n%{http_code}" -X "$method" "${headers[@]}" -d "$data" "${API_ENDPOINT}${path}")
+        HTTP_CODE=$(curl -v -s -w "%{http_code}" -X "$method" "${headers[@]}" -d "$data" "${API_ENDPOINT}${path}" -o "$BODY_FILE" 2> "$CURL_STDERR_FILE")
     else
-        response=$(curl -s -w "\n%{http_code}" -X "$method" "${headers[@]}" "${API_ENDPOINT}${path}")
+        HTTP_CODE=$(curl -v -s -w "%{http_code}" -X "$method" "${headers[@]}" "${API_ENDPOINT}${path}" -o "$BODY_FILE" 2> "$CURL_STDERR_FILE")
     fi
 
-    # Separate body and status code
-    HTTP_CODE=$(tail -n1 <<< "$response")
-    BODY=$(sed '$ d' <<< "$response")
+    BODY=$(<"$BODY_FILE")
+    CURL_STDERR=$(<"$CURL_STDERR_FILE")
+    rm "$BODY_FILE" "$CURL_STDERR_FILE"
 
     if ! [[ "$HTTP_CODE" =~ ^2[0-9]{2}$ ]]; then
-        error "Request to $method $path failed with status $HTTP_CODE. Body: $BODY"
+        echo "❌ ERROR: Request to $method $path failed with status $HTTP_CODE. Body: $BODY" >&2
+
+        diag_header "Failed Request Details"
+        echo "HTTP Status Code: $HTTP_CODE"
+        echo -e "\n--- Response Body ---\n$BODY"
+        echo -e "\n--- cURL Verbose Output (stderr) ---\n$CURL_STDERR"
+
+        REQUEST_ID=$(echo "$CURL_STDERR" | grep -i '< x-amzn-requestid:' | awk -F': ' '{print $2}' | tr -d '\r')
+
+        if [ -n "$WEB_API_ID" ]; then
+            diag_header "CloudWatch Execution Log Analysis"
+            STAGE_INFO=$(aws apigateway get-stage --rest-api-id "$WEB_API_ID" --stage-name Prod --profile "$PROFILE" --region "$REGION")
+            EXECUTION_LOG_GROUP="API-Gateway-Execution-Logs_${WEB_API_ID}/Prod"
+            ACCESS_LOG_ARN=$(echo "$STAGE_INFO" | jq -r '.accessLogSettings.destinationArn // empty')
+            ACCESS_LOG_GROUP=""
+            if [ -n "$ACCESS_LOG_ARN" ]; then
+                ACCESS_LOG_GROUP=$(echo "$ACCESS_LOG_ARN" | cut -d':' -f7)
+            fi
+
+            LOG_GROUPS_TO_SEARCH=()
+            [ -n "$EXECUTION_LOG_GROUP" ] && LOG_GROUPS_TO_SEARCH+=("$EXECUTION_LOG_GROUP")
+            [ -n "$ACCESS_LOG_GROUP" ] && LOG_GROUPS_TO_SEARCH+=("$ACCESS_LOG_GROUP")
+
+            if [ -z "$REQUEST_ID" ]; then
+                echo "Could not find x-amzn-requestid in response headers. Unable to perform targeted log search."
+            elif [ ${#LOG_GROUPS_TO_SEARCH[@]} -eq 0 ]; then
+                echo "Could not identify any CloudWatch log groups from the API Gateway stage configuration."
+            else
+                info "Searching for Request ID: $REQUEST_ID..."
+                max_wait_time=45
+                interval=5
+                end_time=$(( $(date +%s) + max_wait_time ))
+                LOGS_FOUND=false
+
+                while [[ $(date +%s) -lt $end_time && "$LOGS_FOUND" == "false" ]]; do
+                    for LOG_GROUP_NAME in "${LOG_GROUPS_TO_SEARCH[@]}"; do
+                        info "--> Describing recent streams in log group: $LOG_GROUP_NAME"
+                        RECENT_STREAMS_LIST=$(aws logs describe-log-streams --log-group-name "$LOG_GROUP_NAME" --order-by LastEventTime --descending --limit 5 --profile "$PROFILE" --region "$REGION" | jq -r '.logStreams[].logStreamName')
+                        if [ -z "$RECENT_STREAMS_LIST" ]; then
+                            info "    No recent log streams found in this group yet."
+                            continue
+                        fi
+                        while IFS= read -r STREAM_NAME; do
+                            if [ -z "$STREAM_NAME" ]; then continue; fi
+                            info "    --> Checking stream: $STREAM_NAME"
+                            LOGS=$(aws logs filter-log-events --log-group-name "$LOG_GROUP_NAME" --log-stream-names "$STREAM_NAME" --filter-pattern "$REQUEST_ID" --profile "$PROFILE" --region "$REGION" | jq -r '.events[].message')
+                            if [ -n "$LOGS" ]; then
+                                echo -e "\n--- Found Logs in $LOG_GROUP_NAME (Stream: $STREAM_NAME) ---"
+                                echo "$LOGS"
+                                LOGS_FOUND=true
+                                break 2
+                            fi
+                        done <<< "$RECENT_STREAMS_LIST"
+                        if [ "$LOGS_FOUND" == "true" ]; then break; fi
+                    done
+                    if [ "$LOGS_FOUND" == "false" ]; then
+                        remaining_time=$(( end_time - $(date +%s) ))
+                        if [[ $remaining_time -gt 0 ]]; then
+                            info "Logs not found yet. Retrying for another ${remaining_time}s..."
+                            sleep $interval
+                        fi
+                    fi
+                done
+                if [ "$LOGS_FOUND" == "false" ]; then
+                    echo -e "\n--- No Logs Found ---"
+                    echo "Could not find logs for request ID '$REQUEST_ID' after waiting for ${max_wait_time} seconds."
+                    echo "Searched in the following log groups:"
+                    printf " - %s\n" "${LOG_GROUPS_TO_SEARCH[@]}"
+                fi
+            fi
+        fi
+        exit 1
     fi
 
-    # Return body for further processing
     echo "$BODY"
 }
 
@@ -85,19 +161,37 @@ log "AWS SSO session is active."
 # Step 2: Fetch Stack Outputs
 log "Step 2: Fetching required outputs from stack '$STACK_NAME'..."
 API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebApiEndpoint'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
-API_KEY=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebApiTestApiKey'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
+API_KEY_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebApiTestApiKey'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='TestScriptUserPoolClientId'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 TEST_USERNAME=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='TestUsername'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 
+log "Step 2.1: Fetching nested stack resources for diagnostics..."
+NESTED_STACK_NAME=$(aws cloudformation describe-stack-resources --stack-name "$STACK_NAME" --logical-resource-id WebApiApp --query "StackResources[0].PhysicalResourceId" --output text --profile "$PROFILE" --region "$REGION" 2>/dev/null | cut -d'/' -f2)
+WEB_API_ID=""
+if [ -n "$NESTED_STACK_NAME" ]; then
+    WEB_API_ID=$(aws cloudformation describe-stack-resources --stack-name "$NESTED_STACK_NAME" --logical-resource-id WebApi --query "StackResources[0].PhysicalResourceId" --output text --profile "$PROFILE" --region "$REGION" 2>/dev/null)
+fi
 
-if [ -z "$API_ENDPOINT" ] || [ -z "$API_KEY" ] || [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ] || [ -z "$TEST_USERNAME" ]; then
+if [ -z "$WEB_API_ID" ]; then
+    info "⚠️  Could not determine Web API ID from nested stack. CloudWatch log fetching will be disabled on failure."
+fi
+
+if [ -z "$API_ENDPOINT" ] || [ -z "$API_KEY_ID" ] || [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ] || [ -z "$TEST_USERNAME" ]; then
     error "Failed to retrieve one or more required stack outputs. Aborting."
 fi
 log "Successfully fetched stack outputs."
 info "API Endpoint: $API_ENDPOINT"
 info "Test Username: $TEST_USERNAME"
 info "User Pool ID and Client ID: $USER_POOL_ID, $USER_POOL_CLIENT_ID"
+info "API Key ID: $API_KEY_ID"
+
+log "Step 2.5: Fetching API Key value from its ID..."
+API_KEY_VALUE=$(aws apigateway get-api-key --api-key "$API_KEY_ID" --include-value --query 'value' --output text --profile "$PROFILE" --region "$REGION")
+if [ -z "$API_KEY_VALUE" ]; then
+    error "Could not fetch the value for API Key ID: $API_KEY_ID. Check permissions and if the key exists."
+fi
+log "Successfully fetched API Key value."
 
 # Step 3: Authenticate with Cognito
 log "Step 3: Authenticating test user '$TEST_USERNAME' with Cognito..."
@@ -118,7 +212,7 @@ info "Cognito returned a valid JWT for the test user."
 
 # Step 3.5: Save original preferences and test titles with them
 log "Step 3.5: Fetching original preferences to test with and restore later..."
-ORIGINAL_PREFS=$(api_curl "GET" "/preferences" "" "true")
+ORIGINAL_PREFS=$(api_curl "GET" "/preferences" "")
 ORIGINAL_SOURCES_COUNT=$(echo "$ORIGINAL_PREFS" | jq '.sources | length')
 ORIGINAL_GENRES_COUNT=$(echo "$ORIGINAL_PREFS" | jq '.genres | length')
 log "Found ${ORIGINAL_SOURCES_COUNT} sources and ${ORIGINAL_GENRES_COUNT} genres in original preferences."
@@ -165,7 +259,7 @@ FIRST_GENRE_ID=$(echo "$GENRES_RESPONSE" | jq -r '.[0].id // empty')
 
 # --- Test Protected Endpoints (Phase 1: With existing preferences) ---
 log "Testing GET /titles with original preferences..."
-TITLES_RESPONSE=$(api_curl "GET" "/titles" "" "true")
+TITLES_RESPONSE=$(api_curl "GET" "/titles" "")
 if ! echo "$TITLES_RESPONSE" | jq -e 'type == "array"' > /dev/null; then
     error "GET /titles did not return a JSON array. Response: $TITLES_RESPONSE"
 fi
@@ -174,7 +268,7 @@ log "GET /titles returned a valid JSON array."
 info "Found ${TITLES_COUNT} titles based on original user preferences."
 
 log "Testing GET /recommendations with original preferences..."
-RECOMMENDATIONS_RESPONSE=$(api_curl "GET" "/recommendations" "" "true")
+RECOMMENDATIONS_RESPONSE=$(api_curl "GET" "/recommendations" "")
 if ! echo "$RECOMMENDATIONS_RESPONSE" | jq -e 'type == "array"' > /dev/null; then
     error "GET /recommendations did not return a JSON array. Response: $RECOMMENDATIONS_RESPONSE"
 fi
@@ -184,7 +278,7 @@ info "Found ${RECOMMENDATIONS_COUNT} recommendations based on original user pref
 
 # --- Test Protected Endpoints ---
 log "Testing GET /preferences..."
-PREFS_RESPONSE=$(api_curl "GET" "/preferences" "" "true")
+PREFS_RESPONSE=$(api_curl "GET" "/preferences" "")
 if ! echo "$PREFS_RESPONSE" | jq -e 'has("sources") and has("genres")' > /dev/null; then
     error "GET /preferences did not return the expected JSON structure. Response: $PREFS_RESPONSE"
 fi
@@ -197,7 +291,7 @@ if [ -z "$FIRST_SOURCE_ID" ] || [ -z "$FIRST_GENRE_ID" ]; then
 else
     UPDATE_PAYLOAD=$(jq -n --arg sid "$FIRST_SOURCE_ID" --arg gid "$FIRST_GENRE_ID" \
         '{sources: [$sid], genres: [$gid]}')
-    UPDATE_RESPONSE=$(api_curl "PUT" "/preferences" "$UPDATE_PAYLOAD" "true")
+    UPDATE_RESPONSE=$(api_curl "PUT" "/preferences" "$UPDATE_PAYLOAD")
     if ! echo "$UPDATE_RESPONSE" | jq -e '.message | contains("updated successfully")' > /dev/null; then
         error "PUT /preferences failed or returned unexpected message. Response: $UPDATE_RESPONSE"
     fi
@@ -206,7 +300,7 @@ else
 
     # Verify the update
     log "Verifying PUT /preferences with another GET..."
-    VERIFY_RESPONSE=$(api_curl "GET" "/preferences" "" "true")
+    VERIFY_RESPONSE=$(api_curl "GET" "/preferences" "")
     VERIFIED_SOURCE=$(echo "$VERIFY_RESPONSE" | jq -r '.sources[0]')
     VERIFIED_GENRE=$(echo "$VERIFY_RESPONSE" | jq -r '.genres[0]')
 
@@ -219,7 +313,7 @@ fi
 
 # --- Cleanup ---
 log "Cleaning up: Restoring original user preferences..."
-api_curl "PUT" "/preferences" "$ORIGINAL_PREFS" "true" > /dev/null
+api_curl "PUT" "/preferences" "$ORIGINAL_PREFS" > /dev/null
 log "Original user preferences restored."
 info "Sent back ${ORIGINAL_SOURCES_COUNT} sources and ${ORIGINAL_GENRES_COUNT} genres."
 
