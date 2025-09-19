@@ -171,7 +171,7 @@ log "Step 3: Starting Admin API endpoint tests..."
 
 # --- Test GET /admin/dynamodb/summary ---
 log "Testing GET /admin/dynamodb/summary..."
-SUMMARY_RESPONSE=$(admin_api_curl "GET" "/system/dynamodb/summary")
+SUMMARY_RESPONSE=$(admin_api_curl "GET" "/admin/dynamodb/summary")
 info "DynamoDB Summary Response: $SUMMARY_RESPONSE"
 
 # --- Test POST /admin/data/reference/refresh ---
