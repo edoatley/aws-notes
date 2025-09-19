@@ -1,6 +1,0 @@
-{
-  "UserPreferencesFunction": {
-    "DYNAMODB_TABLE_NAME": "UKTVProgrammesLocal",
-    "AWS_ENDPOINT_URL": "http://localstack:4566"
-  }
-}
