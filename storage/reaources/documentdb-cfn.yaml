@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Deploys a secure DocumentDB cluster in private subnets with an EC2 bastion host
+  in a public subnet for access. (v1.0)
+
+Parameters:
+  MyIP:
+    Description: Your public IP address to allow SSH access to the EC2 instance. Find it at https://checkip.amazonaws.com
+    Type: String
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/\d{2}'
+    ConstraintDescription: Must be a valid IP CIDR range (e.g., 1.2.3.4/32).
+
+  KeyPairName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the EC2 instance.
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair.
+
+  InstanceType:
+    Description: EC2 instance type for the bastion host.
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t2.micro
+      - t2.small
+    ConstraintDescription: Must be a valid EC2 instance type.
+
+  DocDBUser:
+    Description: The master username for the DocumentDB cluster.
+    Type: String
+    Default: docdbadmin
+
+  DocDBPassword:
+    Description: The master password for the DocumentDB cluster. Must be at least 8 characters.
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    ConstraintDescription: Must be at least 8 characters.
+
+Resources:
+  # ------------------------------------------------------------#
+  # Networking
+  # ------------------------------------------------------------#
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-VPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-IGW
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicSubnet
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PrivateSubnet1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PrivateSubnet2
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicRouteTable
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # ------------------------------------------------------------#
+  # Security Groups
+  # ------------------------------------------------------------#
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow SSH from my IP and all outbound traffic"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref MyIP
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-EC2-SG
+
+  DocDBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow inbound traffic from the EC2 bastion host"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 27017
+          ToPort: 27017
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DocDB-SG
+
+  # ------------------------------------------------------------#
+  # EC2 Bastion Host
+  # ------------------------------------------------------------#
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      ImageId: '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2}}'
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-BastionHost
+
+  # ------------------------------------------------------------#
+  # DocumentDB Cluster
+  # ------------------------------------------------------------#
+  DocDBSubnetGroup:
+    Type: AWS::DocDB::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "Subnet group for DocumentDB"
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DocDB-SubnetGroup
+
+  DocDBCluster:
+    Type: AWS::DocDB::DBCluster
+    Properties:
+      DBClusterIdentifier: !Sub ${AWS::StackName}-cluster
+      MasterUsername: !Ref DocDBUser
+      MasterUserPassword: !Ref DocDBPassword
+      DBSubnetGroupName: !Ref DocDBSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref DocDBSecurityGroup
+      BackupRetentionPeriod: 5
+      Port: 27017
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DocDB-Cluster
+
+  DocDBInstance1:
+    Type: AWS::DocDB::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref DocDBCluster
+      DBInstanceClass: db.t3.medium
+      DBInstanceIdentifier: !Sub ${AWS::StackName}-instance-1
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DocDB-Instance-1
+
+  DocDBInstance2:
+    Type: AWS::DocDB::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref DocDBCluster
+      DBInstanceClass: db.t3.medium
+      DBInstanceIdentifier: !Sub ${AWS::StackName}-instance-2
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DocDB-Instance-2
+
+Outputs:
+  EC2PublicIP:
+    Description: "Public IP address of the EC2 bastion host"
+    Value: !GetAtt EC2Instance.PublicIp
+
+  DocDBClusterEndpoint:
+    Description: "The connection endpoint for the DocumentDB cluster"
+    Value: !GetAtt DocDBCluster.Endpoint
+
+  DocDBClusterPort:
+    Description: "The connection port for the DocumentDB cluster"
+    Value: !GetAtt DocDBCluster.Port
+
+  SSHCommand:
+    Description: "Command to SSH into the EC2 bastion host. Replace 'my-key.pem' with your private key file."
+    Value: !Sub "ssh -i my-key.pem ec2-user@${EC2Instance.PublicIp}"
+
+  DocDBConnectionString:
+    Description: "Full connection string for the DocumentDB cluster"
+    Value: !Sub "mongodb://${DocDBUser}:<PASSWORD>@${DocDBCluster.Endpoint}:${DocDBCluster.Port}"

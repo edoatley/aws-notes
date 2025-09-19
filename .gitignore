@@ -1,4 +1,10 @@
-/.idea/
+.idea
+bin
 .aws-sam
 build
 .gradle
+.DS_Store
+samconfig.toml
+local-secrets.json
+.venv
+event-streaming-app/src/web/js/generated-config.js
