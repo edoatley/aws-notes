@@ -10,7 +10,6 @@ PROFILE="streaming"
 REGION="eu-west-2"
 # This password must match the one in set-cognito-password.sh
 ADMIN_PASSWORD="A-Strong-P@ssw0rd1"
-ID_TOKEN="" # Will be populated after authentication
 
 # --- Helper Functions ---
 log() {
@@ -47,8 +46,6 @@ admin_api_curl() {
     fi
     # Add the identity token from Cognito to the Authorization header.
     headers+=("-H" "Authorization: ${ID_TOKEN}")
-    # Add the API key required by the API Gateway Usage Plan.
-    headers+=("-H" "x-api-key: ${ADMIN_API_KEY_VALUE}")
 
     if [ -n "$data" ]; then
         headers+=("-H" "Content-Type: application/json")
@@ -129,7 +126,6 @@ get_output_value() {
 }
 
 ADMIN_API_ENDPOINT=$(get_output_value "AdminApiEndpoint")
-ADMIN_API_KEY_ID=$(get_output_value "AdminApiKey")
 PERIODIC_REFERENCE_FUNCTION_NAME=$(get_output_value "PeriodicReferenceFunctionName")
 USER_PREFS_INGESTION_FUNCTION_NAME=$(get_output_value "UserPrefsTitleIngestionFunctionName")
 TITLE_ENRICHMENT_FUNCTION_NAME=$(get_output_value "TitleEnrichmentFunctionName")
@@ -138,7 +134,7 @@ USER_POOL_CLIENT_ID=$(get_output_value "TestScriptUserPoolClientId")
 NESTED_ADMIN_STACK_NAME=$(aws cloudformation describe-stack-resources --stack-name "$STACK_NAME" --logical-resource-id AdminApiApp --query "StackResources[0].PhysicalResourceId" --output text --profile "$PROFILE" | cut -d'/' -f2)
 ADMIN_API_ID=$(aws cloudformation describe-stack-resources --stack-name "$NESTED_ADMIN_STACK_NAME" --logical-resource-id AdminApi --query "StackResources[0].PhysicalResourceId" --output text --profile "$PROFILE")
 
-if [ -z "$ADMIN_API_ENDPOINT" ] || [ -z "$ADMIN_API_KEY_ID" ]; then
+if [ -z "$ADMIN_API_ENDPOINT" ]; then
     error "Failed to retrieve Admin API endpoint or API Key from stack outputs. Aborting."
 fi
 
@@ -148,14 +144,6 @@ fi
 
 log "Successfully fetched API and function details."
 info "Admin API Endpoint: $ADMIN_API_ENDPOINT"
-info "Admin API Key ID: $ADMIN_API_KEY_ID"
-
-log "Step 2.1: Fetching Admin API Key value from its ID..."
-ADMIN_API_KEY_VALUE=$(aws apigateway get-api-key --api-key "$ADMIN_API_KEY_ID" --include-value --query 'value' --output text --profile "$PROFILE" --region "$REGION")
-if [ -z "$ADMIN_API_KEY_VALUE" ]; then
-    error "Could not fetch the value for Admin API Key ID: $ADMIN_API_KEY_ID. Check permissions and if the key exists."
-fi
-log "Successfully fetched Admin API Key value."
 
 # Step 2.5: Authenticate as Admin User to get JWT token
 log "Step 2.5: Authenticating as admin user to get JWT token..."
@@ -181,31 +169,31 @@ log "Successfully authenticated and retrieved ID token."
 # Step 3: Test Admin API Endpoints
 log "Step 3: Starting Admin API endpoint tests..."
 
-# --- Test GET /admin/system/dynamodb/summary ---
-log "Testing GET /admin/system/dynamodb/summary..."
-SUMMARY_RESPONSE=$(admin_api_curl "GET" "/admin/system/dynamodb/summary")
+# --- Test GET /admin/dynamodb/summary ---
+log "Testing GET /admin/dynamodb/summary..."
+SUMMARY_RESPONSE=$(admin_api_curl "GET" "/system/dynamodb/summary")
 info "DynamoDB Summary Response: $SUMMARY_RESPONSE"
 
 # --- Test POST /admin/data/reference/refresh ---
-log "Testing POST /admin/data/reference/refresh..."
+log "Testing POST /admin/reference/refresh..."
 REFRESH_PAYLOAD='{"refresh_sources": "Y", "refresh_genres": "Y", "regions": "GB"}'
-admin_api_curl "POST" "/admin/data/reference/refresh" "$REFRESH_PAYLOAD" > /dev/null 2>&1
-log "POST /admin/data/reference/refresh initiated. Waiting for logs..."
+admin_api_curl "POST" "/admin/reference/refresh" "$REFRESH_PAYLOAD" > /dev/null 2>&1
+log "POST /admin/reference/refresh initiated. Waiting for logs..."
 sleep 20 # Wait for logs to be generated
 ./resources/scripts/get_lambda_logs.sh "$PERIODIC_REFERENCE_FUNCTION_NAME" "$PROFILE" "$REGION"
 
-# --- Test POST /admin/data/titles/refresh ---
-log "Testing POST /admin/data/titles/refresh..."
-admin_api_curl "POST" "/admin/data/titles/refresh" '{}' > /dev/null 2>&1
-log "POST /admin/data/titles/refresh initiated. Waiting for logs..."
+# --- Test POST /admin/titles/refresh ---
+log "Testing POST /admin/titles/refresh..."
+admin_api_curl "POST" "/admin/titles/refresh" '{}' > /dev/null 2>&1
+log "POST /admin/titles/refresh initiated. Waiting for logs..."
 sleep 20 # Wait for logs to be generated
 ./resources/scripts/get_lambda_logs.sh "$USER_PREFS_INGESTION_FUNCTION_NAME" "$PROFILE" "$REGION"
 
 
-# --- Test POST /admin/data/titles/enrich ---
-log "Testing POST /admin/data/titles/enrich..."
-admin_api_curl "POST" "/admin/data/titles/enrich" '{}' > /dev/null 2>&1
-log "POST /admin/data/titles/enrich initiated. Waiting for logs..."
+# --- Test POST /admin/titles/enrich ---
+log "Testing POST /admin/titles/enrich..."
+admin_api_curl "POST" "/admin/titles/enrich" '{}' > /dev/null 2>&1
+log "POST /admin/titles/enrich initiated. Waiting for logs..."
 sleep 20 # Wait for logs to be generated
 ./resources/scripts/get_lambda_logs.sh "$TITLE_ENRICHMENT_FUNCTION_NAME" "$PROFILE" "$REGION"
 

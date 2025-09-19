@@ -43,7 +43,7 @@ The admin API will be a RESTful API, likely exposed via API Gateway and integrat
 
 *   **Trigger Reference Data Refresh**
     *   **HTTP Method:** `POST`
-    *   **Path:** `/admin/data/reference/refresh`
+    *   **Path:** `/admin/reference/refresh`
     *   **Request Body:** (Optional) Empty.
     *   **Response:**
         *   `202 Accepted`: Indicates the refresh process has been initiated.
@@ -53,7 +53,7 @@ The admin API will be a RESTful API, likely exposed via API Gateway and integrat
 
 *   **Trigger Title Data Refresh**
     *   **HTTP Method:** `POST`
-    *   **Path:** `/admin/data/titles/refresh`
+    *   **Path:** `/admin/titles/refresh`
     *   **Request Body:** (Optional) Empty.
     *   **Response:**
         *   `202 Accepted`: Indicates the refresh process has been initiated.
@@ -63,7 +63,7 @@ The admin API will be a RESTful API, likely exposed via API Gateway and integrat
 
 *   **Trigger Title Enrichment**
     *   **HTTP Method:** `POST`
-    *   **Path:** `/admin/data/titles/enrich`
+    *   **Path:** `/admin/titles/enrich`
     *   **Request Body:** (Optional) Empty.
     *   **Response:**
         *   `202 Accepted`: Indicates the enrichment process has been initiated.
@@ -73,7 +73,7 @@ The admin API will be a RESTful API, likely exposed via API Gateway and integrat
 
 *   **Get DynamoDB Data Summary**
     *   **HTTP Method:** `GET`
-    *   **Path:** `/admin/system/dynamodb/summary`
+    *   **Path:** `/admin/dynamodb/summary`
     *   **Request Body:** None.
     *   **Response:**
         *   `200 OK`:

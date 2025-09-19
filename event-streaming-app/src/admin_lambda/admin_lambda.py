@@ -83,6 +83,11 @@ def trigger_lambda_function(function_arn, payload=None):
 
 # --- Main Handler ---
 
+def get_records_that_are_not_enriched():
+    pass
+
+
+
 def lambda_handler(event, context):
     """
     Main handler for the admin Lambda function.
@@ -112,18 +117,20 @@ def lambda_handler(event, context):
             }
 
     if http_method == 'POST':
-        if path == '/admin/data/reference/refresh':
+        if path == '/admin/reference/refresh':
+            body = {"refresh_sources": "Y", "refresh_genres": "Y", "regions": "GB"}
             response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["reference_data_refresh"], payload=body)
-        elif path == '/admin/data/titles/refresh':
+        elif path == '/admin/titles/refresh':
             response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["title_data_refresh"], payload=body)
-        elif path == '/admin/data/titles/enrich':
+        elif path == '/admin/titles/enrich':
+            # body = get_records_that_are_not_enriched()
             response_body, status_code = trigger_lambda_function(LAMBDA_FUNCTIONS["title_enrichment"], payload=body)
         else:
             response_body = {"message": f"POST request to unknown path: {path}"}
             status_code = 404
             
     elif http_method == 'GET':
-        if path == '/admin/system/dynamodb/summary':
+        if path == '/admin/dynamodb/summary':
             response_body, status_code = get_dynamodb_summary()
         else:
             response_body = {"message": f"GET request to unknown path: {path}"}

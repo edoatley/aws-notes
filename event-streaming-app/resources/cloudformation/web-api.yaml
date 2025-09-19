@@ -23,7 +23,6 @@ Resources:
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !Ref UserPoolArn
-        ApiKeyRequired: true
       AccessLogSetting:
         DestinationArn: !GetAtt WebApiAccessLogGroup.Arn
         Format: '{"requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "caller":"$context.identity.caller", "user":"$context.identity.user","requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath", "status":"$context.status","protocol":"$context.protocol", "responseLength":"$context.responseLength"}'
@@ -67,36 +66,6 @@ Resources:
             Method: options
             Auth:
               Authorizer: NONE
-              ApiKeyRequired: false
-
-  # Explicitly create the API Key
-  WebApiKey:
-    Type: AWS::ApiGateway::ApiKey
-    Properties:
-      Name: !Sub "${AWS::StackName}-WebApiKey"
-      Description: "API Key for Web API"
-      Enabled: true
-
-  # Explicitly create the Usage Plan
-  WebApiUsagePlan:
-    Type: AWS::ApiGateway::UsagePlan
-    Properties:
-      UsagePlanName: !Sub "${AWS::StackName}-WebApiUsagePlan"
-      Description: "Usage plan for Web API"
-      ApiStages:
-        - ApiId: !Ref WebApi
-          Stage: !Ref StageName
-      Throttle:
-        RateLimit: 1000
-        BurstLimit: 2000
-
-  # Link the API Key to the Usage Plan
-  WebApiUsagePlanKey:
-    Type: AWS::ApiGateway::UsagePlanKey
-    Properties:
-      KeyId: !Ref WebApiKey
-      KeyType: API_KEY
-      UsagePlanId: !Ref WebApiUsagePlan
 
   WebApiFunction:
     Type: AWS::Serverless::Function
@@ -128,7 +97,6 @@ Resources:
             Method: get
             Auth:
               Authorizer: NONE
-              ApiKeyRequired: false
         GetGenres:
           Type: Api
           Properties:
@@ -137,7 +105,6 @@ Resources:
             Method: get
             Auth:
               Authorizer: NONE
-              ApiKeyRequired: false
         GetTitles:
           Type: Api
           Properties:
@@ -146,7 +113,6 @@ Resources:
             Method: get
             Auth:
               Authorizer: CognitoAuthorizer
-              ApiKeyRequired: false
         GetRecommendations:
           Type: Api
           Properties:
@@ -155,7 +121,6 @@ Resources:
             Method: get
             Auth:
               Authorizer: CognitoAuthorizer
-              ApiKeyRequired: false
         GetPreferences:
           Type: Api
           Properties:
@@ -164,7 +129,6 @@ Resources:
             Method: get
             Auth:
               Authorizer: CognitoAuthorizer
-              ApiKeyRequired: false
         UpdatePreferences:
           Type: Api
           Properties:
@@ -173,7 +137,6 @@ Resources:
             Method: put
             Auth:
               Authorizer: CognitoAuthorizer
-              ApiKeyRequired: false
 
 Outputs:
   ApiEndpoint:
@@ -185,6 +148,3 @@ Outputs:
   WebApiFunctionArn:
     Description: "ARN of the Web API Lambda function"
     Value: !GetAtt WebApiFunction.Arn
-  WebApiKeyId:
-    Description: API Key ID for Web API
-    Value: !Ref WebApiKey

@@ -38,7 +38,7 @@ api_curl() {
     local method=$1
     local path=$2
     local data=$3
-    local headers=("-H" "x-api-key: ${API_KEY_VALUE}")
+    local headers=()
     local BODY_FILE=$(mktemp)
     local CURL_STDERR_FILE=$(mktemp)
     local HTTP_CODE
@@ -161,7 +161,6 @@ log "AWS SSO session is active."
 # Step 2: Fetch Stack Outputs
 log "Step 2: Fetching required outputs from stack '$STACK_NAME'..."
 API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebApiEndpoint'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
-API_KEY_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WebApiTestApiKey'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='TestScriptUserPoolClientId'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
 TEST_USERNAME=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='TestUsername'].OutputValue" --output text --profile "$PROFILE" --region "$REGION")
@@ -177,21 +176,13 @@ if [ -z "$WEB_API_ID" ]; then
     info "⚠️  Could not determine Web API ID from nested stack. CloudWatch log fetching will be disabled on failure."
 fi
 
-if [ -z "$API_ENDPOINT" ] || [ -z "$API_KEY_ID" ] || [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ] || [ -z "$TEST_USERNAME" ]; then
+if [ -z "$API_ENDPOINT" ] || [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ] || [ -z "$TEST_USERNAME" ]; then
     error "Failed to retrieve one or more required stack outputs. Aborting."
 fi
 log "Successfully fetched stack outputs."
 info "API Endpoint: $API_ENDPOINT"
 info "Test Username: $TEST_USERNAME"
 info "User Pool ID and Client ID: $USER_POOL_ID, $USER_POOL_CLIENT_ID"
-info "API Key ID: $API_KEY_ID"
-
-log "Step 2.5: Fetching API Key value from its ID..."
-API_KEY_VALUE=$(aws apigateway get-api-key --api-key "$API_KEY_ID" --include-value --query 'value' --output text --profile "$PROFILE" --region "$REGION")
-if [ -z "$API_KEY_VALUE" ]; then
-    error "Could not fetch the value for API Key ID: $API_KEY_ID. Check permissions and if the key exists."
-fi
-log "Successfully fetched API Key value."
 
 # Step 3: Authenticate with Cognito
 log "Step 3: Authenticating test user '$TEST_USERNAME' with Cognito..."

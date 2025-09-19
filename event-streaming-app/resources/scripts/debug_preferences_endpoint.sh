@@ -53,27 +53,17 @@ get_output_value() {
 }
 
 API_ENDPOINT=$(get_output_value "WebApiEndpoint")
-API_KEY_ID=$(get_output_value "WebApiTestApiKey")
 USER_POOL_ID=$(get_output_value "UserPoolId")
 USER_POOL_CLIENT_ID=$(get_output_value "TestScriptUserPoolClientId")
 TEST_USERNAME=$(get_output_value "TestUsername")
 
 # Validation
 if [ -z "$API_ENDPOINT" ]; then error "Failed to retrieve WebApiEndpoint from stack outputs."; fi
-if [ -z "$API_KEY_ID" ]; then error "Failed to retrieve WebApiTestApiKey from stack outputs."; fi
 if [ -z "$USER_POOL_ID" ]; then error "Failed to retrieve UserPoolId from stack outputs."; fi
 if [ -z "$USER_POOL_CLIENT_ID" ]; then error "Failed to retrieve TestScriptUserPoolClientId from stack outputs."; fi
 if [ -z "$TEST_USERNAME" ]; then error "Failed to retrieve TestUsername from stack outputs."; fi
 info "Successfully fetched all required stack outputs."
 info "API Endpoint: $API_ENDPOINT"
-info "API Key ID: ${API_KEY_ID}"
-
-log "Step 3.1: Fetching API Key value from its ID..."
-API_KEY_VALUE=$(aws apigateway get-api-key --api-key "$API_KEY_ID" --include-value --query 'value' --output text --profile "$PROFILE" --region "$REGION")
-if [ -z "$API_KEY_VALUE" ]; then
-    error "Could not fetch the value for API Key ID: $API_KEY_ID. Check permissions and if the key exists."
-fi
-info "Successfully fetched API Key value."
 
 log "Step 3.5: Fetching nested stack resources for diagnostics..."
 NESTED_STACK_NAME=$(aws cloudformation describe-stack-resources --stack-name "$STACK_NAME" --logical-resource-id WebApiApp --query "StackResources[0].PhysicalResourceId" --output text --profile "$PROFILE" --region "$REGION" 2>/dev/null | cut -d'/' -f2)
@@ -106,7 +96,7 @@ info "Successfully authenticated and obtained ID token."
 info "ID Token: ${ID_TOKEN:0:10}..."
 
 log "Step 5: Making API call to GET /preferences..."
-CURL_COMMAND="curl -v -s -X GET -H \"x-api-key: ${API_KEY_VALUE}\" -H \"Authorization: ${ID_TOKEN}\" \"${API_ENDPOINT}/preferences\""
+CURL_COMMAND="curl -v -s -X GET -H \"Authorization: ${ID_TOKEN}\" \"${API_ENDPOINT}/preferences\""
 
 info "Executing command..."
 
@@ -114,7 +104,6 @@ info "Executing command..."
 BODY_FILE=$(mktemp)
 CURL_STDERR_FILE=$(mktemp)
 HTTP_CODE=$(curl -v -s -w "%{http_code}" -X GET \
-    -H "x-api-key: ${API_KEY_VALUE}" \
     -H "Authorization: ${ID_TOKEN}" \
     "${API_ENDPOINT}/preferences" \
     -o "$BODY_FILE" 2> "$CURL_STDERR_FILE")

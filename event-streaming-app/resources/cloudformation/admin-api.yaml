@@ -24,25 +24,20 @@ Parameters:
   UserPoolArn:
     Type: String
     Description: "ARN of the Cognito User Pool for authorization."
+  StageName:
+    Type: String
+    Default: Prod
 
 Resources:
   AdminApi:
     Type: AWS::Serverless::Api
     Properties:
-      StageName: Prod
-      Cors:
-        AllowMethods: "'GET,POST,OPTIONS'"
-        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-        AllowOrigin: "'*'"
+      StageName: !Ref StageName
       Auth:
-        UsagePlan:
-          CreateUsagePlan: PER_API
-          Description: "Usage plan for AdminApi"
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !Ref UserPoolArn
-        ApiKeyRequired: true
       AccessLogSetting:
         DestinationArn: !GetAtt AdminApiAccessLogGroup.Arn
         Format: '{"requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "caller":"$context.identity.caller", "user":"$context.identity.user","requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath", "status":"$context.status","protocol":"$context.protocol", "responseLength":"$context.responseLength"}'
@@ -58,6 +53,34 @@ Resources:
     Properties:
       LogGroupName: !Sub "/aws/api-gateway/${AdminApi}"
       RetentionInDays: 7
+
+  AdminCorsOptionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      Runtime: python3.12
+      # This function's only job is to return the correct CORS headers for preflight OPTIONS requests.
+      InlineCode: |
+        import json
+        def handler(event, context):
+            return {
+                "statusCode": 204,
+                "headers": {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                    "Access-Control-Allow-Methods": "GET,PUT,POST,OPTIONS,DELETE"
+                },
+                "body": ""
+            }
+      Events:
+        OptionsCatchAll:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AdminApi
+            Path: /{proxy+}
+            Method: options
+            Auth:
+              Authorizer: NONE
 
   AdminLambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -127,31 +150,36 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref AdminApi
-            Path: /system/dynamodb/summary
+            Path: /admin/dynamodb/summary
             Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
         AdminApiPostReferenceRefresh:
           Type: Api
           Properties:
             RestApiId: !Ref AdminApi
-            Path: /data/reference/refresh
+            Path: /admin/reference/refresh
             Method: post
+            Auth:
+              Authorizer: CognitoAuthorizer
         AdminApiPostTitleRefresh:
           Type: Api
           Properties:
             RestApiId: !Ref AdminApi
-            Path: /data/titles/refresh
+            Path: /admin/titles/refresh
             Method: post
+            Auth:
+              Authorizer: CognitoAuthorizer
         AdminApiPostTitleEnrich:
           Type: Api
           Properties:
             RestApiId: !Ref AdminApi
-            Path: /data/titles/enrich
+            Path: /admin/titles/enrich
             Method: post
+            Auth:
+              Authorizer: CognitoAuthorizer
 
 Outputs:
   ApiEndpoint:
     Description: "The Admin API endpoint URL"
     Value: !Sub "https://${AdminApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
-  ApiKeyId:
-    Description: "API Key ID for the Admin API"
-    Value: !Ref AdminApiApiKey

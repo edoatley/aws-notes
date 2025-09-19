@@ -58,10 +58,10 @@ const api = (() => {
 
     // Admin API Calls
     const adminApi = (path, method, body) => makeRequest(window.appConfig.AdminApiEndpoint, path, method, body);
-    const refreshReferenceData = () => adminApi('/data/reference/refresh', 'POST');
-    const refreshTitleData = () => adminApi('/data/titles/refresh', 'POST');
-    const triggerEnrichment = () => adminApi('/data/titles/enrich', 'POST');
-    const getDynamoDbSummary = () => adminApi('/system/dynamodb/summary');
+    const refreshReferenceData = () => adminApi('/admin/reference/refresh', 'POST');
+    const refreshTitleData = () => adminApi('/admin/titles/refresh', 'POST');
+    const triggerEnrichment = () => adminApi('/admin/titles/enrich', 'POST');
+    const getDynamoDbSummary = () => adminApi('/admin/dynamodb/summary');
 
     return {
         getSources,

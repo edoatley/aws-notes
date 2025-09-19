@@ -206,9 +206,6 @@ Outputs:
   AdminApiEndpoint:
     Description: "The Admin API endpoint URL"
     Value: !GetAtt AdminApiApp.Outputs.ApiEndpoint
-  AdminApiKey:
-    Description: "The API key for the Admin API"
-    Value: !GetAtt AdminApiApp.Outputs.ApiKeyId
   AdminUsername:
     Description: "The username of the pre-created admin user"
     Value: !GetAtt CognitoApp.Outputs.AdminUsername
@@ -245,9 +242,6 @@ Outputs:
   WebApiEndpoint:
     Description: "The Web API endpoint URL"
     Value: !GetAtt WebApiApp.Outputs.ApiEndpoint
-  WebApiTestApiKey:
-    Description: "The API key for testing the Web API"
-    Value: !GetAtt WebApiApp.Outputs.WebApiKeyId
   WebsiteBucket:
     Description: "The S3 bucket hosting the website"
     Value: !Ref WebsiteBucket
