@@ -1,4 +1,50 @@
 {
-    "java.configuration.updateBuildConfiguration": "automatic",
-    "java.compile.nullAnalysis.mode": "automatic"
+  // CloudFormation YAML support
+  "yaml.customTags": [
+    "!And",
+    "!If",
+    "!Not",
+    "!Equals",
+    "!Or",
+    "!FindInMap sequence",
+    "!Base64",
+    "!Cidr",
+    "!Ref",
+    "!Sub",
+    "!GetAtt",
+    "!GetAZs",
+    "!ImportValue",
+    "!Select",
+    "!Select sequence",
+    "!Split",
+    "!Join sequence",
+    "!Transform"
+  ],
+  
+  // Associate CloudFormation file patterns with YAML
+  "files.associations": {
+    "*.yaml": "yaml",
+    "*.yml": "yaml",
+    "*.cfn": "yaml",
+    "template.yaml": "yaml",
+    "template.yml": "yaml"
+  },
+  
+  // YAML settings
+  "yaml.format.enable": true,
+  "yaml.validate": true,
+  "yaml.hover": true,
+  "yaml.completion": true,
+  
+  // Disable YAML schema validation for CloudFormation files (optional)
+  // This prevents false positives from standard YAML schemas
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  
+  // Specific settings for CloudFormation files
+  "yaml.schemas": {
+    // You can add CloudFormation schema if available
+    // "https://raw.githubusercontent.com/aws-cloudformation/cloudformation-cli/master/src/rpdk/core/data/schema/provider.definition.schema.v1.json": "template.yaml"
+  }
 }
