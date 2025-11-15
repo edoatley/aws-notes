@@ -189,7 +189,16 @@ aws ssm start-session \
 
 ### Step 3: Setup EC2 Host
 
-Once connected to the EC2 instance, verify the environment:
+Once connected to the EC2 instance, verify the environment. First invoke bash and switch to `ec2-user`:
+
+```bash
+sh-5.2$ bash
+[ssm-user@ip-10-0-1-77 bin]$ sudo su - ec2-user
+[ec2-user@ip-10-0-1-77 ~]$
+```
+
+Then validate as follows:
+
 
 ```bash
 # Verify Java 11 is installed
@@ -202,6 +211,29 @@ gradle -v
 
 # Verify Git is installed
 git --version
+```
+
+expected output:
+
+```output:
+openjdk version "11.0.29" 2025-10-21 LTS
+OpenJDK Runtime Environment Corretto-11.0.29.7.1 (build 11.0.29+7-LTS)
+OpenJDK 64-Bit Server VM Corretto-11.0.29.7.1 (build 11.0.29+7-LTS, mixed mode)
+
+------------------------------------------------------------
+Gradle 8.5
+------------------------------------------------------------
+
+Build time:   2023-11-29 14:08:57 UTC
+Revision:     28aca86a7180baa17117e0e5ba01d8ea9feca598
+
+Kotlin:       1.9.20
+Groovy:       3.0.17
+Ant:          Apache Ant(TM) version 1.10.13 compiled on January 4 2023
+JVM:          11.0.29 (Amazon.com Inc. 11.0.29+7-LTS)
+OS:           Linux 6.1.158-178.288.amzn2023.x86_64 amd64
+
+git version 2.50.1
 ```
 
 If any of these are missing, check the UserData logs:
@@ -267,8 +299,11 @@ Once connected to the EC2 instance, clone the repository and build the project:
 
 ```bash
 # Clone the repository (if not already cloned)
-git clone <your-repo-url>
-cd <your-repo-name>/data/glue-schema-registry
+git clone https://github.com/edoatley/aws-notes.git
+# Checkout the appropriate branch
+cd aws-notes && git checkout aws-glue && git pull
+# Move to our glue folder
+cd data/glue-schema-registry
 
 # Build the project using Gradle wrapper
 ./gradlew build shadowJar
