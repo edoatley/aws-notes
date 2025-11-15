@@ -580,6 +580,106 @@ If you prefer separate terminals (though less stable with SSM):
 
 **Note:** The consumer uses `GENERIC_RECORD` mode instead of `SPECIFIC_RECORD` to enable backward compatibility. This allows the consumer to read messages with any schema version by accessing fields by name. The consumer will only access the fields it knows about (`paymentId`, `amount`, `timestamp`) and will ignore the new `description` field from V2 messages.
 
+**Actual Beahviour**
+
+V2 publisher produced messages with new description field:
+
+```output
+[main] INFO com.example.AvroProducerV2 - Sent payment V2: paymentId=payment-v2-1, amount=150.5, description=Payment for order #1, timestamp=1763223659160
+[main] INFO com.example.AvroProducerV2 - Sent payment V2: paymentId=payment-v2-2, amount=301.0, description=Payment for order #2, timestamp=1763223659844
+[main] INFO com.example.AvroProducerV2 - Sent payment V2: paymentId=payment-v2-3, amount=451.5, description=Payment for order #3, timestamp=1763223659945
+[main] INFO com.example.AvroProducerV2 - Sent payment V2: paymentId=payment-v2-4, amount=602.0, description=Payment for order #4, timestamp=1763223660047
+[main] INFO com.example.AvroProducerV2 - Sent payment V2: paymentId=payment-v2-5, amount=752.5, description=Payment for order #5, timestamp=1763223660148
+[main] INFO com.example.AvroProducerV2 - Sent payment V2: paymentId=payment-v2-6, amount=903.0, description=Payment for order #6, timestamp=1763223660249
+[main] INFO com.example.AvroProducerV2 - Sent payment V2: paymentId=payment-v2-7, amount=1053.5, description=Payment for order #7, timestamp=1763223660350
+[main] INFO com.example.AvroProducerV2 - Sent payment V2: paymentId=payment-v2-8, amount=1204.0, description=Payment for order #8, timestamp=1763223660451
+[main] INFO com.example.AvroProducerV2 - Sent payment V2: paymentId=payment-v2-9, amount=1354.5, description=Payment for order #9, timestamp=1763223660551
+[main] INFO com.example.AvroProducerV2 - Sent payment V2: paymentId=payment-v2-10, amount=1505.0, description=Payment for order #10, timestamp=1763223660652
+```
+
+the consumer then read just the V1 fields it can use:
+
+```output
+[main] INFO com.example.AvroConsumer - Received payment: paymentId=payment-v2-1, amount=150.5, timestamp=1763223659160
+[main] INFO com.example.AvroConsumer - Received payment: paymentId=payment-v2-2, amount=301.0, timestamp=1763223659844
+[main] INFO com.example.AvroConsumer - Received payment: paymentId=payment-v2-3, amount=451.5, timestamp=1763223659945
+[main] INFO com.example.AvroConsumer - Received payment: paymentId=payment-v2-4, amount=602.0, timestamp=1763223660047
+[main] INFO com.example.AvroConsumer - Received payment: paymentId=payment-v2-5, amount=752.5, timestamp=1763223660148
+[main] INFO com.example.AvroConsumer - Received payment: paymentId=payment-v2-6, amount=903.0, timestamp=1763223660249
+[main] INFO com.example.AvroConsumer - Received payment: paymentId=payment-v2-7, amount=1053.5, timestamp=1763223660350
+[main] INFO com.example.AvroConsumer - Received payment: paymentId=payment-v2-8, amount=1204.0, timestamp=1763223660451
+[main] INFO com.example.AvroConsumer - Received payment: paymentId=payment-v2-9, amount=1354.5, timestamp=1763223660551
+[main] INFO com.example.AvroConsumer - Received payment: paymentId=payment-v2-10, amount=1505.0, timestamp=1763223660652
+```
+
+Looking at the scema registry we can see `arn:aws:glue:us-east-1:727361020121:schema/PaymentSchemaRegistry/payment-schema`, version 1:
+
+```json
+{
+  "type": "record",
+  "name": "Payment",
+  "namespace": "com.example",
+  "fields": [
+    {
+      "name": "paymentId",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "amount",
+      "type": "double"
+    },
+    {
+      "name": "timestamp",
+      "type": "long"
+    }
+  ]
+}
+```
+
+and also version 2:
+
+```json
+```json
+{
+  "type": "record",
+  "name": "PaymentV2",
+  "namespace": "com.example",
+  "fields": [
+    {
+      "name": "paymentId",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "amount",
+      "type": "double"
+    },
+    {
+      "name": "timestamp",
+      "type": "long"
+    },
+    {
+      "name": "description",
+      "type": [
+        "null",
+        {
+          "type": "string",
+          "avro.java.string": "String"
+        }
+      ],
+      "default": null
+    }
+  ]
+}
+```
+
+
+
 #### Test Case 2: Incompatible Change Test
 
 This test verifies that renaming a required field breaks backward compatibility and is rejected by the registry.
@@ -614,6 +714,62 @@ This test verifies that renaming a required field breaks backward compatibility 
 - No messages are sent to Kafka
 - Schema Version 3 is NOT registered in Glue Schema Registry
 - This demonstrates that incompatible changes are rejected by the registry
+
+**actual behaviour**
+
+In the logs we see this failure:
+
+```output
+Caused by: com.amazonaws.services.schemaregistry.exception.AWSSchemaRegistryException: Failed to get schemaVersionId by schema definition for schema name = payment-schema 
+        at com.amazonaws.services.schemaregistry.common.AWSSchemaRegistryClient.getSchemaVersionIdByDefinition(AWSSchemaRegistryClient.java:148)
+        at com.amazonaws.services.schemaregistry.common.SchemaByDefinitionFetcher$SchemaDefinitionToVersionCache.load(SchemaByDefinitionFetcher.java:110)
+        at com.amazonaws.services.schemaregistry.common.SchemaByDefinitionFetcher$SchemaDefinitionToVersionCache.load(SchemaByDefinitionFetcher.java:106)
+        at com.google.common.cache.LocalCache$LoadingValueReference.loadFuture(LocalCache.java:3529)
+        at com.google.common.cache.LocalCache$Segment.loadSync(LocalCache.java:2278)
+        at com.google.common.cache.LocalCache$Segment.lockedGetOrLoad(LocalCache.java:2155)
+        at com.google.common.cache.LocalCache$Segment.get(LocalCache.java:2045)
+        at com.google.common.cache.LocalCache.get(LocalCache.java:3951)
+        at com.google.common.cache.LocalCache.getOrLoad(LocalCache.java:3974)
+        at com.google.common.cache.LocalCache$LocalLoadingCache.get(LocalCache.java:4935)
+        at com.amazonaws.services.schemaregistry.common.SchemaByDefinitionFetcher.getORRegisterSchemaVersionId(SchemaByDefinitionFetcher.java:74)
+        ... 7 more
+Caused by: com.amazonaws.services.schemaregistry.exception.AWSSchemaRegistryException: Schema Found but status is FAILURE
+        at com.amazonaws.services.schemaregistry.common.AWSSchemaRegistryClient.returnSchemaVersionIdIfAvailable(AWSSchemaRegistryClient.java:195)
+        at com.amazonaws.services.schemaregistry.common.AWSSchemaRegistryClient.getSchemaVersionIdByDefinition(AWSSchemaRegistryClient.java:145)
+        ... 17 more
+```
+
+and in the schema registry we see the schema:
+
+```json
+{
+  "type": "record",
+  "name": "PaymentV3",
+  "namespace": "com.example",
+  "fields": [
+    {
+      "name": "paymentId",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "paymentAmount",
+      "type": "double"
+    },
+    {
+      "name": "timestamp",
+      "type": "long"
+    }
+  ]
+}
+```
+
+but also that it failed:
+
+![Glue-Payment-Schema](images/Glue-Payment-Schema.jpg)
+
 
 **Troubleshooting:**
 - If V3 producer succeeds unexpectedly, verify that compatibility mode is set to `BACKWARD` in the producer configuration
@@ -993,4 +1149,3 @@ Epic 1 (Infrastructure Deployment), Epic 2 (AVRO Producer-Consumer Flow), and Ep
 - [AWS Glue Schema Registry Documentation](https://docs.aws.amazon.com/glue/latest/dg/schema-registry.html)
 - [Amazon MSK Serverless Documentation](https://docs.aws.amazon.com/msk/latest/developerguide/serverless.html)
 - [AWS Glue Schema Registry SerDe Library](https://github.com/awslabs/aws-glue-schema-registry)
-
