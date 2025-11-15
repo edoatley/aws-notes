@@ -3,6 +3,9 @@ package com.example;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.clients.CommonClientConfigs;
 import com.amazonaws.services.schemaregistry.serializers.GlueSchemaRegistryKafkaSerializer;
@@ -12,7 +15,9 @@ import org.slf4j.LoggerFactory;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 
 public class AvroProducer {
     private static final Logger logger = LoggerFactory.getLogger(AvroProducer.class);
@@ -82,6 +87,9 @@ public class AvroProducer {
         logger.info("Using Registry: {}", props.getProperty("registryName"));
         logger.info("Using Schema: {}", props.getProperty("schemaName"));
 
+        // Ensure topic exists (MSK Serverless doesn't auto-create topics)
+        ensureTopicExists(props, TOPIC_NAME);
+
         // Create producer
         KafkaProducer<String, Payment> producer = new KafkaProducer<>(props);
 
@@ -120,6 +128,36 @@ public class AvroProducer {
             System.exit(1);
         } finally {
             producer.close();
+        }
+    }
+
+    private static void ensureTopicExists(Properties props, String topicName) {
+        // Create admin client with same properties as producer
+        Properties adminProps = new Properties();
+        adminProps.putAll(props);
+        adminProps.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, props.getProperty("bootstrap.servers"));
+        
+        AdminClient admin = AdminClient.create(adminProps);
+        
+        try {
+            // Check if topic exists
+            boolean topicExists = admin.listTopics().names().get().contains(topicName);
+            
+            if (!topicExists) {
+                logger.info("Topic '{}' does not exist. Creating it...", topicName);
+                // Create topic with 1 partition (MSK Serverless handles replication)
+                NewTopic newTopic = new NewTopic(topicName, 1, (short) 1);
+                admin.createTopics(Collections.singletonList(newTopic)).all().get();
+                logger.info("Topic '{}' created successfully", topicName);
+            } else {
+                logger.info("Topic '{}' already exists", topicName);
+            }
+        } catch (InterruptedException | ExecutionException e) {
+            logger.error("Error ensuring topic exists: {}", topicName, e);
+            // Don't exit - let producer try anyway, it might work
+            logger.warn("Continuing despite topic creation error...");
+        } finally {
+            admin.close();
         }
     }
 }

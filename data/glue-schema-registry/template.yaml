@@ -1,6 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'AWS Glue Schema Registry Testbed Infrastructure'
 
+Parameters:
+  ClusterName:
+    Type: String
+    Default: glue-schema-registry-test-cluster
+    Description: The name of the MSK Serverless cluster
+
 Resources:
   # ============================================
   # VPC and Networking Resources
@@ -162,12 +168,12 @@ Resources:
                   - kafka-cluster:DeleteTopic
                   - kafka-cluster:WriteData
                   - kafka-cluster:ReadData
-                Resource: !Sub "arn:aws:kafka:${AWS::Region}:${AWS::AccountId}:topic/glue-schema-registry-test-cluster/*"
+                Resource: !Sub "arn:aws:kafka:${AWS::Region}:${AWS::AccountId}:topic/${ClusterName}/*"
               - Effect: Allow
                 Action:
                   - kafka-cluster:AlterGroup
                   - kafka-cluster:DescribeGroup
-                Resource: !Sub "arn:aws:kafka:${AWS::Region}:${AWS::AccountId}:group/glue-schema-registry-test-cluster/*"
+                Resource: !Sub "arn:aws:kafka:${AWS::Region}:${AWS::AccountId}:group/${ClusterName}/*"
         - PolicyName: GlueSchemaRegistryPermissions
           PolicyDocument:
             Version: '2012-10-17'
@@ -197,7 +203,7 @@ Resources:
   MSKServerlessCluster:
     Type: AWS::MSK::ServerlessCluster
     Properties:
-      ClusterName: glue-schema-registry-test-cluster
+      ClusterName: !Ref ClusterName
       VpcConfigs:
         - SubnetIds:
             - !Ref PublicSubnet1

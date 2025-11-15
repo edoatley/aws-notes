@@ -351,9 +351,19 @@ schema.name=payment-schema
 
 **Instructions:**
 
+**Important:** The topic `payments-avro` must exist before the consumer can read from it. You have two options:
+
+**Option A: Create the topic first (recommended for first run)**
+```bash
+# Create the topic
+java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.CreateTopic application.properties
+```
+
+**Option B: Run producer first** - The producer will automatically create the topic when it sends the first message.
+
 1. **Open two SSM terminal sessions** (one for consumer, one for producer)
 
-2. **Terminal 1: Start the Consumer**
+2. **Terminal 1: Start the Consumer** (after topic exists)
    ```bash
    # Connect to EC2 instance (if not already connected)
    aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
@@ -375,7 +385,7 @@ schema.name=payment-schema
    Consumer started, waiting for messages...
    ```
 
-3. **Terminal 2: Start the Producer**
+3. **Terminal 2: Start the Producer** (or create topic first)
    ```bash
    # Connect to EC2 instance in a new terminal
    aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
@@ -383,7 +393,11 @@ schema.name=payment-schema
    # Navigate to project directory
    cd <project-directory>/data/glue-schema-registry
    
-   # Run the producer (using properties file)
+   # Option 1: Create topic first, then run producer
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.CreateTopic application.properties
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducer application.properties
+   
+   # Option 2: Just run producer (it will create the topic automatically)
    java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducer application.properties
    ```
    
