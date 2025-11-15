@@ -1007,7 +1007,11 @@ Producer created messages:
 the consumer 
 
 
+Can see the schema in the schema registry:
 
+```json
+{"$schema":"http://json-schema.org/draft-04/schema#","title":"Sensor Reading","type":"object","additionalProperties":false,"properties":{"sensorId":{"type":"string"},"temperature":{"type":"number"},"humidity":{"type":"number"},"timestamp":{"type":"integer"}}}
+```
 **Troubleshooting:**
 - If consumer doesn't receive messages, ensure producer ran successfully first
 - If schema registration fails, verify IAM permissions on EC2 instance role

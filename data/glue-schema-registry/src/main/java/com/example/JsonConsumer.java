@@ -107,11 +107,19 @@ public class JsonConsumer {
                     // Extract JsonDataWithSchema wrapper
                     JsonDataWithSchema jsonDataWithSchema = record.value();
                     
-                    // Get the actual JSON data (as Object, typically a Map or the actual data structure)
+                    // Get the actual JSON data - getPayload() returns the data as Object
+                    // It might be a String, Map, or already deserialized object
                     Object jsonData = jsonDataWithSchema.getPayload();
                     
                     // Deserialize to SensorReading POJO using Jackson
-                    SensorReading sensorReading = objectMapper.convertValue(jsonData, SensorReading.class);
+                    SensorReading sensorReading;
+                    if (jsonData instanceof String) {
+                        // If payload is a JSON string, parse it
+                        sensorReading = objectMapper.readValue((String) jsonData, SensorReading.class);
+                    } else {
+                        // If payload is already an object (Map, etc.), convert it
+                        sensorReading = objectMapper.convertValue(jsonData, SensorReading.class);
+                    }
                     
                     logger.info("Received sensor reading: sensorId={}, temperature={}, humidity={}, timestamp={}",
                                sensorReading.getSensorId(),
