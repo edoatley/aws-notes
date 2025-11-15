@@ -17,11 +17,14 @@ import java.util.concurrent.ExecutionException;
 
 public class CreateTopic {
     private static final Logger logger = LoggerFactory.getLogger(CreateTopic.class);
-    private static final String TOPIC_NAME = "payments-avro";
+    private static final String DEFAULT_AVRO_TOPIC = "payments-avro";
+    private static final String DEFAULT_JSON_TOPIC = "sensors-json";
 
     public static void main(String[] args) {
         if (args.length < 1) {
-            System.err.println("Usage: CreateTopic <properties-file>");
+            System.err.println("Usage: CreateTopic <properties-file> [topic-name]");
+            System.err.println("  properties-file: Path to application.properties or application-json.properties file");
+            System.err.println("  topic-name: Optional topic name (if not provided, inferred from data.format or defaults to payments-avro)");
             System.exit(1);
         }
 
@@ -36,6 +39,28 @@ public class CreateTopic {
         } catch (IOException e) {
             logger.error("Failed to load properties file: {}", propertiesFile, e);
             System.exit(1);
+        }
+
+        // Determine topic name
+        String topicName;
+        if (args.length >= 2) {
+            // Topic name provided as command-line argument
+            topicName = args[1];
+            logger.info("Using topic name from command line: {}", topicName);
+        } else if (props.containsKey("topic.name")) {
+            // Topic name in properties file
+            topicName = props.getProperty("topic.name");
+            logger.info("Using topic name from properties file: {}", topicName);
+        } else {
+            // Infer from data.format
+            String dataFormat = props.getProperty("data.format", "AVRO").toUpperCase();
+            if ("JSON".equals(dataFormat)) {
+                topicName = DEFAULT_JSON_TOPIC;
+                logger.info("Inferred topic name from data.format=JSON: {}", topicName);
+            } else {
+                topicName = DEFAULT_AVRO_TOPIC;
+                logger.info("Inferred topic name from data.format=AVRO (or default): {}", topicName);
+            }
         }
 
         // Set admin client properties
@@ -54,15 +79,15 @@ public class CreateTopic {
 
         try {
             // Check if topic exists
-            boolean topicExists = admin.listTopics().names().get().contains(TOPIC_NAME);
+            boolean topicExists = admin.listTopics().names().get().contains(topicName);
             
             if (topicExists) {
-                logger.info("Topic '{}' already exists", TOPIC_NAME);
+                logger.info("Topic '{}' already exists", topicName);
             } else {
                 // Create topic
-                NewTopic newTopic = new NewTopic(TOPIC_NAME, 1, (short) 1); // 1 partition, replication factor 1 (MSK Serverless handles replication)
+                NewTopic newTopic = new NewTopic(topicName, 1, (short) 1); // 1 partition, replication factor 1 (MSK Serverless handles replication)
                 admin.createTopics(Collections.singletonList(newTopic)).all().get();
-                logger.info("Topic '{}' created successfully", TOPIC_NAME);
+                logger.info("Topic '{}' created successfully", topicName);
             }
 
             // List all topics
