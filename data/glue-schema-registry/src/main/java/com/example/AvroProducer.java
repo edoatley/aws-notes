@@ -69,9 +69,9 @@ public class AvroProducer {
                   "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
 
         // Glue Schema Registry properties - use correct property names
-        // The library expects these specific property names
+        // The library expects "region" (from AWSSchemaRegistryConstants.AWS_REGION which equals "region")
         String region = props.getProperty("aws.region", AWS_REGION);
-        props.setProperty("AWS_REGION", region);  // Library expects uppercase
+        props.setProperty("region", region);  // Library expects property name "region"
         props.putIfAbsent("dataFormat", "AVRO");
         props.putIfAbsent("registryName", props.getProperty("registry.name", REGISTRY_NAME));
         props.putIfAbsent("schemaName", props.getProperty("schema.name", SCHEMA_NAME));

@@ -74,9 +74,9 @@ public class AvroConsumer {
                   "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
 
         // Glue Schema Registry properties - use correct property names
-        // The library expects AWS_REGION (uppercase) for region
+        // The library expects "region" (from AWSSchemaRegistryConstants.AWS_REGION which equals "region")
         String region = props.getProperty("aws.region", AWS_REGION);
-        props.setProperty("AWS_REGION", region);  // Library expects uppercase
+        props.setProperty("region", region);  // Library expects property name "region"
         props.putIfAbsent("avroRecordType", props.getProperty("avro.record.type", "SPECIFIC_RECORD"));
         props.putIfAbsent("registryName", props.getProperty("registry.name", REGISTRY_NAME));
         
