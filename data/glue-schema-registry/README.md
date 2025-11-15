@@ -436,13 +436,99 @@ schema.name=payment-schema
 - If you see `UNKNOWN_TOPIC_OR_PARTITION`, create the topic first using `CreateTopic` utility
 - If you see `AccessDeniedException` for Glue operations, wait 30-60 seconds after stack update for IAM permissions to propagate
 
-### Step 6: View Results
+### Step 6: Run AVRO Schema Evolution Tests
 
-After running tests, view results:
+This section demonstrates schema evolution scenarios using AWS Glue Schema Registry.
 
-1. **Consumer Terminal:** Check for deserialized message output
-2. **AWS Glue Console:** Navigate to AWS Glue → Schema Registry → `PaymentSchemaRegistry` to see registered schemas
-3. **CloudWatch Logs:** (if logging is configured)
+**Prerequisites:**
+- Epic 2 completed successfully (V1 producer/consumer working)
+- Schema Version 1 exists in Glue Schema Registry
+- Project built with new V2 and V3 schemas
+
+#### Test Case 1: Backward Compatibility Test
+
+This test verifies that adding an optional field is backward-compatible.
+
+**Procedure:**
+
+1. **Terminal 1: Start the Original Consumer (V1 Schema)**
+   ```bash
+   # Connect to EC2 instance
+   aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
+   
+   # Navigate to project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Start the original consumer (uses V1 schema)
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroConsumer application.properties
+   ```
+   
+   The consumer will wait for messages.
+
+2. **Terminal 2: Run V2 Producer (New Schema with Optional Field)**
+   ```bash
+   # Connect to EC2 instance in a new terminal
+   aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
+   
+   # Navigate to project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Run the V2 producer
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducerV2 application.properties
+   ```
+   
+   The producer will send 10 messages with the new schema (including optional `description` field) and exit.
+
+3. **Verify Results:**
+   - **Terminal 1 (Consumer):** Should display 10 deserialized payment messages (without `description` field, as expected)
+   - **AWS Glue Console:** Navigate to AWS Glue → Schema Registry → `PaymentSchemaRegistry` → `payment-schema`
+     - You should see Schema Version 2 registered
+     - Version 2 should include the new optional `description` field
+
+**Expected Behavior:**
+- V2 producer successfully sends messages
+- Schema Version 2 is registered in Glue Schema Registry
+- Original V1 consumer successfully reads all V2 messages (ignoring the new `description` field)
+- This demonstrates backward compatibility
+
+#### Test Case 2: Incompatible Change Test
+
+This test verifies that renaming a required field breaks backward compatibility and is rejected by the registry.
+
+**Procedure:**
+
+1. **Run V3 Producer (Incompatible Schema)**
+   ```bash
+   # Connect to EC2 instance
+   aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
+   
+   # Navigate to project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Run the V3 producer (will fail as expected)
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducerV3 application.properties
+   ```
+
+2. **Verify Results:**
+   - **Terminal Output:** Should show an exception indicating schema compatibility failure:
+     ```
+     ERROR: Schema registration failed due to incompatible change
+     Exception: Schema compatibility check failed. The new schema is not backward compatible with the existing schema version.
+     This is expected behavior - renaming a required field breaks BACKWARD compatibility
+     ```
+   - **AWS Glue Console:** Navigate to AWS Glue → Schema Registry → `PaymentSchemaRegistry` → `payment-schema`
+     - Schema Version 3 should NOT exist
+     - Only Version 1 (and Version 2 if Test Case 1 was run) should exist
+
+**Expected Behavior:**
+- V3 producer fails with a compatibility exception
+- No messages are sent to Kafka
+- Schema Version 3 is NOT registered in Glue Schema Registry
+- This demonstrates that incompatible changes are rejected by the registry
+
+**Troubleshooting:**
+- If V3 producer succeeds unexpectedly, verify that compatibility mode is set to `BACKWARD` in the producer configuration
+- If exception message is unclear, check AWS Glue Schema Registry logs in CloudWatch
 
 ## CRITICAL: Cleanup
 
@@ -718,7 +804,7 @@ If you see `SaslAuthenticationException: Access denied` or `TopicAuthorizationEx
 
 ## Next Steps
 
-Epic 1 (Infrastructure Deployment) and Epic 2 (AVRO Producer-Consumer Flow) are complete:
+Epic 1 (Infrastructure Deployment), Epic 2 (AVRO Producer-Consumer Flow), and Epic 3 (AVRO Schema Evolution & Error Scenarios) are complete:
 
 1. ✅ Infrastructure deployed
 2. ✅ MSK Bootstrap Servers retrieved
@@ -727,11 +813,14 @@ Epic 1 (Infrastructure Deployment) and Epic 2 (AVRO Producer-Consumer Flow) are 
 5. ✅ AVRO Producer-Consumer Flow implemented and tested
 6. ✅ Glue Schema Registry integration working
 7. ✅ End-to-end message flow validated
+8. ✅ Backward compatibility testing (optional field addition)
+9. ✅ Incompatible change rejection testing (field renaming)
 
 **Future enhancements:**
-- Epic 3: JSON Schema Producer-Consumer Flow
-- Schema evolution and compatibility testing
+- Epic 4: JSON Schema Producer-Consumer Flow
+- Additional schema evolution scenarios (field removal, type changes)
 - Performance benchmarking
+- Multi-region schema replication testing
 
 ## Additional Resources
 
