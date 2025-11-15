@@ -443,13 +443,100 @@ This section demonstrates schema evolution scenarios using AWS Glue Schema Regis
 **Prerequisites:**
 - Epic 2 completed successfully (V1 producer/consumer working)
 - Schema Version 1 exists in Glue Schema Registry
-- Project built with new V2 and V3 schemas
+
+**Important:** If you've just added the new V2 and V3 schema files and Java classes, you must rebuild the project first:
+
+```bash
+# On the EC2 instance, navigate to the project directory
+cd ~/aws-notes/data/glue-schema-registry
+
+# Rebuild the project to generate PaymentV2 and PaymentV3 classes from the new schema files
+./gradlew build shadowJar
+```
+
+This will:
+- Generate `PaymentV2` and `PaymentV3` Java classes from the new `.avsc` schema files
+- Compile the new `AvroProducerV2.java` and `AvroProducerV3.java` classes
+- Create an updated JAR file with all new classes
+
+**Expected Output:**
+- Build should complete successfully with `BUILD SUCCESSFUL`
+- You should see generated classes in `build/generated-main-avro-java/com/example/PaymentV2.java` and `PaymentV3.java`
 
 #### Test Case 1: Backward Compatibility Test
 
 This test verifies that adding an optional field is backward-compatible.
 
-**Procedure:**
+**Procedure Using tmux (Recommended - More Stable):**
+
+Using `tmux` in a single SSM session is more stable than trying to maintain two separate SSM sessions. Here's how to do it:
+
+1. **Connect to EC2 and Start tmux:**
+   ```bash
+   # Connect to EC2 instance
+   aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
+   
+   # Switch to ec2-user
+   bash
+   sudo su - ec2-user
+   
+   # Install tmux if not already installed (Amazon Linux 2023 may not have it by default)
+   sudo dnf install -y tmux
+   
+   # Navigate to project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Start tmux
+   tmux
+   ```
+
+2. **Split the tmux window into two panes:**
+   - Press `Ctrl+b` (release both keys), then press `"` (double quote) to split horizontally
+   - **On Mac:** You may need to press `Shift+"` to get the double quote character
+   - You'll now have two panes: top and bottom
+
+3. **Navigate between panes:**
+   - Press `Ctrl+b` then arrow keys to switch between panes
+   - Or: `Ctrl+b` then `o` to cycle through panes
+
+4. **Top Pane - Start the Consumer:**
+   ```bash
+   # Make sure you're in the project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Start the original consumer (uses V1 schema)
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroConsumer application.properties
+   ```
+   The consumer will wait for messages.
+
+5. **Bottom Pane - Run the Producer:**
+   - Switch to the bottom pane (Ctrl+b then down arrow)
+   ```bash
+   # Make sure you're in the project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Run the V2 producer
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducerV2 application.properties
+   ```
+   The producer will send 10 messages with the new schema (including optional `description` field) and exit.
+
+**Useful tmux Commands:**
+- `Ctrl+b` then `"` (or `Shift+"` on Mac) - Split pane horizontally
+- `Ctrl+b` then `%` (or `Shift+5` on Mac) - Split pane vertically
+- `Ctrl+b` then arrow keys - Navigate between panes
+- `Ctrl+b` then `x` - Close current pane (after confirming)
+- `Ctrl+b` then `d` - Detach from tmux (sessions keep running)
+- `tmux attach` - Reattach to existing tmux session
+- `Ctrl+b` then `z` - Zoom/unzoom current pane (full screen toggle)
+
+**Note for Mac Users:** 
+- The tmux commands run on the remote EC2 instance (Linux), but your Mac keyboard layout affects which keys you press
+- For special characters like `"` and `%`, you may need to use `Shift` to get the correct character
+- Try: `Ctrl+b` then `Shift+"` for horizontal split, or `Ctrl+b` then `Shift+5` for vertical split
+
+**Alternative: Using Two Separate SSM Sessions**
+
+If you prefer separate terminals (though less stable with SSM):
 
 1. **Terminal 1: Start the Original Consumer (V1 Schema)**
    ```bash
@@ -479,8 +566,8 @@ This test verifies that adding an optional field is backward-compatible.
    
    The producer will send 10 messages with the new schema (including optional `description` field) and exit.
 
-3. **Verify Results:**
-   - **Terminal 1 (Consumer):** Should display 10 deserialized payment messages (without `description` field, as expected)
+6. **Verify Results:**
+   - **Top Pane (Consumer):** Should display 10 deserialized payment messages (without `description` field, as expected)
    - **AWS Glue Console:** Navigate to AWS Glue → Schema Registry → `PaymentSchemaRegistry` → `payment-schema`
      - You should see Schema Version 2 registered
      - Version 2 should include the new optional `description` field
@@ -490,6 +577,8 @@ This test verifies that adding an optional field is backward-compatible.
 - Schema Version 2 is registered in Glue Schema Registry
 - Original V1 consumer successfully reads all V2 messages (ignoring the new `description` field)
 - This demonstrates backward compatibility
+
+**Note:** The consumer uses `GENERIC_RECORD` mode instead of `SPECIFIC_RECORD` to enable backward compatibility. This allows the consumer to read messages with any schema version by accessing fields by name. The consumer will only access the fields it knows about (`paymentId`, `amount`, `timestamp`) and will ignore the new `description` field from V2 messages.
 
 #### Test Case 2: Incompatible Change Test
 
@@ -621,6 +710,69 @@ Note the `unset` is required
      --region us-east-1
    ```
 3. Check IAM role has `AmazonSSMManagedInstanceCore` policy attached
+
+### SSM Session Completely Unresponsive - Restart Instance
+
+If SSM sessions are completely unresponsive or won't start, restart the EC2 instance:
+
+```bash
+# Get the instance ID
+INSTANCE_ID=$(aws cloudformation describe-stacks \
+  --stack-name glue-schema-registry-testbed \
+  --region us-east-1 \
+  --profile streaming \
+  --query 'Stacks[0].Outputs[?OutputKey==`EC2InstanceId`].OutputValue' \
+  --output text)
+
+echo "Instance ID: $INSTANCE_ID"
+
+# Stop the instance
+echo "Stopping instance..."
+aws ec2 stop-instances \
+  --instance-ids $INSTANCE_ID \
+  --region us-east-1 \
+  --profile streaming
+
+# Wait for instance to stop (this may take 1-2 minutes)
+echo "Waiting for instance to stop..."
+aws ec2 wait instance-stopped \
+  --instance-ids $INSTANCE_ID \
+  --region us-east-1 \
+  --profile streaming
+
+echo "Instance stopped. Starting instance..."
+
+# Start the instance
+aws ec2 start-instances \
+  --instance-ids $INSTANCE_ID \
+  --region us-east-1 \
+  --profile streaming
+
+# Wait for instance to be running
+echo "Waiting for instance to be running..."
+aws ec2 wait instance-running \
+  --instance-ids $INSTANCE_ID \
+  --region us-east-1 \
+  --profile streaming
+
+# Wait a bit more for SSM agent to be ready (usually 30-60 seconds)
+echo "Waiting for SSM agent to be ready..."
+sleep 60
+
+# Verify SSM agent is ready
+echo "Checking SSM agent status..."
+aws ssm describe-instance-information \
+  --filters "Key=InstanceIds,Values=$INSTANCE_ID" \
+  --region us-east-1 \
+  --profile streaming \
+  --query 'InstanceInformationList[0].[PingStatus,LastPingDateTime]' \
+  --output table
+
+echo "Instance restarted. You can now try connecting via SSM:"
+echo "aws ssm start-session --target $INSTANCE_ID --region us-east-1 --profile streaming"
+```
+
+**Note:** After restart, you may need to wait 1-2 minutes for the SSM agent to fully initialize before connecting.
 
 ### MSK Bootstrap Servers Not Available
 
@@ -778,7 +930,7 @@ for session in $(aws ssm describe-sessions \
 done
 ```
 
-**Tip:** Use `tmux` or `screen` inside SSM sessions to persist work if the session disconnects:
+**Tip:** Use `tmux` inside SSM sessions to persist work if the session disconnects and to run multiple commands simultaneously:
 ```bash
 # Start tmux
 tmux
@@ -786,6 +938,20 @@ tmux
 # If session disconnects, reconnect and run:
 tmux attach
 ```
+
+**Using tmux for Producer/Consumer Tests:**
+
+When running producer and consumer tests, using `tmux` with split panes is more stable than maintaining two separate SSM sessions:
+
+```bash
+# After connecting via SSM and starting tmux:
+# 1. Split pane: Ctrl+b then "
+# 2. Top pane: Run consumer
+# 3. Bottom pane: Run producer
+# 4. Navigate: Ctrl+b then arrow keys
+```
+
+See Step 6 Test Case 1 for detailed tmux instructions.
 
 ### MSK IAM Authentication Errors
 

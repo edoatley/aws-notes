@@ -16,7 +16,8 @@ compatibility=BACKWARD
 
 # Consumer-specific (for AvroConsumer)
 consumer.group.id=payment-consumer-group
-avro.record.type=SPECIFIC_RECORD
+# Use GENERIC_RECORD for backward compatibility - allows reading messages with different schema versions
+avro.record.type=GENERIC_RECORD
 
 # MSK IAM Authentication
 security.protocol=SASL_SSL

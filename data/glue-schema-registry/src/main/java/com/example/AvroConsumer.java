@@ -7,6 +7,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.clients.CommonClientConfigs;
 import com.amazonaws.services.schemaregistry.deserializers.GlueSchemaRegistryKafkaDeserializer;
+import org.apache.avro.generic.GenericRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,14 +78,16 @@ public class AvroConsumer {
         // The library expects "region" (from AWSSchemaRegistryConstants.AWS_REGION which equals "region")
         String region = props.getProperty("aws.region", AWS_REGION);
         props.setProperty("region", region);  // Library expects property name "region"
-        props.putIfAbsent("avroRecordType", props.getProperty("avro.record.type", "SPECIFIC_RECORD"));
+        // Use GENERIC_RECORD for backward compatibility - allows reading messages with different schema versions
+        props.putIfAbsent("avroRecordType", props.getProperty("avro.record.type", "GENERIC_RECORD"));
         props.putIfAbsent("registryName", props.getProperty("registry.name", REGISTRY_NAME));
         
         logger.info("Using AWS Region: {}", region);
         logger.info("Using Registry: {}", props.getProperty("registryName"));
+        logger.info("Using Avro Record Type: {}", props.getProperty("avroRecordType"));
 
-        // Create consumer
-        KafkaConsumer<String, Payment> consumer = new KafkaConsumer<>(props);
+        // Create consumer with GenericRecord for schema evolution compatibility
+        KafkaConsumer<String, GenericRecord> consumer = new KafkaConsumer<>(props);
 
         try {
             // Subscribe to topic
@@ -95,12 +98,17 @@ public class AvroConsumer {
 
             // Poll for messages
             while (messageCount < EXPECTED_MESSAGE_COUNT) {
-                ConsumerRecords<String, Payment> records = consumer.poll(Duration.ofSeconds(1));
+                ConsumerRecords<String, GenericRecord> records = consumer.poll(Duration.ofSeconds(1));
 
-                for (ConsumerRecord<String, Payment> record : records) {
-                    Payment payment = record.value();
+                for (ConsumerRecord<String, GenericRecord> record : records) {
+                    GenericRecord payment = record.value();
+                    // Extract fields using GenericRecord API - works with any schema version
+                    String paymentId = payment.get("paymentId") != null ? payment.get("paymentId").toString() : "unknown";
+                    Double amount = payment.get("amount") != null ? (Double) payment.get("amount") : 0.0;
+                    Long timestamp = payment.get("timestamp") != null ? (Long) payment.get("timestamp") : 0L;
+                    
                     logger.info("Received payment: paymentId={}, amount={}, timestamp={}", 
-                               payment.getPaymentId(), payment.getAmount(), payment.getTimestamp());
+                               paymentId, amount, timestamp);
                     messageCount++;
 
                     if (messageCount >= EXPECTED_MESSAGE_COUNT) {
