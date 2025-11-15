@@ -775,6 +775,228 @@ but also that it failed:
 - If V3 producer succeeds unexpectedly, verify that compatibility mode is set to `BACKWARD` in the producer configuration
 - If exception message is unclear, check AWS Glue Schema Registry logs in CloudWatch
 
+### Step 7: Run JSON Schema Producer-Consumer Test
+
+This test demonstrates JSON Schema serialization/deserialization using AWS Glue Schema Registry.
+
+**Prerequisites:**
+- MSK bootstrap server string (retrieved in Step 1)
+- Project built successfully (Step 4)
+- Epic 4 code implemented (JsonProducer, JsonConsumer, SensorReading POJO, SensorReading.json schema)
+
+**Setup Properties File:**
+
+Create a JSON-specific properties file with your configuration values:
+
+```bash
+# Copy the template
+cp application-json.properties.template application-json.properties
+
+# Edit the file with your values
+nano application-json.properties  # or use vi, vim, etc.
+```
+
+Update the properties in `application-json.properties` with your MSK bootstrap server string and JSON-specific settings:
+
+```properties
+bootstrap.servers=boot-xxxxxx.yy.kafka-serverless.us-east-1.amazonaws.com:9098
+aws.region=us-east-1
+registry.name=PaymentSchemaRegistry
+schema.name=sensor-schema
+data.format=JSON
+schema.auto.registration.enabled=true
+compatibility=BACKWARD
+consumer.group.id=sensor-consumer-group
+security.protocol=SASL_SSL
+sasl.mechanism=AWS_MSK_IAM
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
+sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
+```
+
+**Key Differences from AVRO Properties:**
+- `data.format=JSON` (instead of `AVRO`)
+- `schema.name=sensor-schema` (instead of `payment-schema`)
+- `consumer.group.id=sensor-consumer-group` (instead of `payment-consumer-group`)
+- No `avro.record.type` property (AVRO-specific)
+
+**Note:** The `application-json.properties` file contains all necessary configuration for JSON Schema. The applications will read from this file.
+
+**Instructions:**
+
+**Important:** The topic `sensors-json` must exist before messages can be sent or consumed. The producer will automatically create the topic, but for the first run, it's recommended to create it explicitly.
+
+**Procedure Using tmux (Recommended - More Stable):**
+
+Using `tmux` in a single SSM session is more stable than trying to maintain two separate SSM sessions. Here's how to do it:
+
+1. **Connect to EC2 and Start tmux:**
+   ```bash
+   # Connect to EC2 instance
+   aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
+   
+   # Switch to ec2-user
+   bash
+   sudo su - ec2-user
+   
+   # Install tmux if not already installed
+   sudo dnf install -y tmux
+   
+   # Navigate to project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Start tmux
+   tmux
+   ```
+
+2. **Split the tmux window into two panes:**
+   - Press `Ctrl+b` (release both keys), then press `"` (double quote) to split horizontally
+   - **On Mac:** You may need to press `Shift+"` to get the double quote character
+   - You'll now have two panes: top and bottom
+
+3. **Navigate between panes:**
+   - Press `Ctrl+b` then arrow keys to switch between panes
+   - Or: `Ctrl+b` then `o` to cycle through panes
+
+4. **Top Pane - Create the Topic (First Run Only):**
+   ```bash
+   # Make sure you're in the project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Create the topic
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.CreateTopic application-json.properties
+   ```
+   
+   **Note:** The producer will also create the topic automatically if it doesn't exist, but creating it first ensures it's ready before starting the consumer.
+
+5. **Top Pane - Start the Consumer:**
+   ```bash
+   # Make sure you're in the project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Start the consumer
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.JsonConsumer application-json.properties
+   ```
+   
+   **Optional:** You can override bootstrap servers if needed:
+   ```bash
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.JsonConsumer application-json.properties boot-xxxxxx.yy.kafka-serverless.us-east-1.amazonaws.com:9098
+   ```
+   
+   The consumer will start and wait for messages. You should see:
+   ```
+   Consumer started, waiting for messages...
+   ```
+
+6. **Bottom Pane - Start the Producer:**
+   - Switch to the bottom pane (Ctrl+b then down arrow)
+   ```bash
+   # Make sure you're in the project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Run the producer (it will create the topic automatically if it doesn't exist)
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.JsonProducer application-json.properties
+   ```
+   
+   **Optional:** You can override bootstrap servers if needed:
+   ```bash
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.JsonProducer application-json.properties boot-xxxxxx.yy.kafka-serverless.us-east-1.amazonaws.com:9098
+   ```
+   
+   The producer will send 10 messages and then exit. You should see:
+   ```
+   Sent sensor reading: sensorId=sensor-1, temperature=22.5, humidity=45.0, timestamp=1234567890
+   Sent sensor reading: sensorId=sensor-2, temperature=23.1, humidity=46.5, timestamp=1234567891
+   ...
+   Producer completed. Sent 10 messages.
+   ```
+
+**Useful tmux Commands:**
+- `Ctrl+b` then `"` (or `Shift+"` on Mac) - Split pane horizontally
+- `Ctrl+b` then `%` (or `Shift+5` on Mac) - Split pane vertically
+- `Ctrl+b` then arrow keys - Navigate between panes
+- `Ctrl+b` then `x` - Close current pane (after confirming)
+- `Ctrl+b` then `d` - Detach from tmux (sessions keep running)
+- `tmux attach` - Reattach to existing tmux session
+- `Ctrl+b` then `z` - Zoom/unzoom current pane (full screen toggle)
+
+**Alternative: Using Two Separate SSM Sessions**
+
+If you prefer separate terminals (though less stable with SSM):
+
+1. **Terminal 1: Create the Topic (First Run Only)**
+   ```bash
+   # Connect to EC2 instance
+   aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
+   
+   # Navigate to project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Create the topic
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.CreateTopic application-json.properties
+   ```
+
+2. **Terminal 1: Start the Consumer** (after topic exists)
+   ```bash
+   # Connect to EC2 instance (if not already connected)
+   aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
+   
+   # Navigate to project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Run the consumer (using properties file)
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.JsonConsumer application-json.properties
+   ```
+   
+   The consumer will start and wait for messages. You should see:
+   ```
+   Consumer started, waiting for messages...
+   ```
+
+3. **Terminal 2: Start the Producer**
+   ```bash
+   # Connect to EC2 instance in a new terminal
+   aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
+   
+   # Navigate to project directory
+   cd ~/aws-notes/data/glue-schema-registry
+   
+   # Run the producer (it will create the topic automatically if it doesn't exist)
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.JsonProducer application-json.properties
+   ```
+   
+   The producer will send 10 messages and then exit.
+
+4. **Verify Results:**
+   - **Terminal 1 (Consumer):** Should display 10 deserialized sensor reading messages:
+     ```
+     Received sensor reading: sensorId=sensor-1, temperature=22.5, humidity=45.0, timestamp=1234567890
+     Received sensor reading: sensorId=sensor-2, temperature=23.1, humidity=46.5, timestamp=1234567891
+     ...
+     Consumer completed. Received 10 messages.
+     ```
+   
+   - **AWS Glue Console:** Navigate to AWS Glue → Schema Registry → `PaymentSchemaRegistry` → `sensor-schema`
+     - You should see Schema Version 1 registered
+     - Schema definition should match the `SensorReading.json` file
+     - Verify the schema shows JSON Schema format (not AVRO)
+
+**Expected Behavior:**
+- JSON producer successfully sends 10 messages with sensor reading data
+- Schema Version 1 is registered in Glue Schema Registry with JSON Schema format
+- JSON consumer successfully reads all 10 messages and deserializes them correctly
+- Consumer logs show all fields: `sensorId`, `temperature`, `humidity`, `timestamp`
+- Schema appears in Glue console with JSON Schema structure
+
+**Troubleshooting:**
+- If consumer doesn't receive messages, ensure producer ran successfully first
+- If schema registration fails, verify IAM permissions on EC2 instance role
+- If connection fails, verify MSK cluster is in `ACTIVE` state and bootstrap servers are correct
+- If you see `UNKNOWN_TOPIC_OR_PARTITION`, create the topic first using `CreateTopic` utility
+- If you see `AccessDeniedException` for Glue operations, wait 30-60 seconds after stack update for IAM permissions to propagate
+- If deserialization fails, verify that `SensorReading.java` POJO class matches the JSON Schema structure exactly
+- If you see JSON parsing errors, verify the JSON Schema file is valid and properly formatted
+- If properties file is not found, ensure you're using `application-json.properties` (not `application.properties`)
+
 ## CRITICAL: Cleanup
 
 **IMPORTANT:** To avoid ongoing charges, destroy all infrastructure immediately after testing:
@@ -1126,7 +1348,7 @@ If you see `SaslAuthenticationException: Access denied` or `TopicAuthorizationEx
 
 ## Next Steps
 
-Epic 1 (Infrastructure Deployment), Epic 2 (AVRO Producer-Consumer Flow), and Epic 3 (AVRO Schema Evolution & Error Scenarios) are complete:
+Epic 1 (Infrastructure Deployment), Epic 2 (AVRO Producer-Consumer Flow), Epic 3 (AVRO Schema Evolution & Error Scenarios), and Epic 4 (JSON Schema Producer-Consumer Flow) are complete:
 
 1. ✅ Infrastructure deployed
 2. ✅ MSK Bootstrap Servers retrieved
@@ -1137,12 +1359,14 @@ Epic 1 (Infrastructure Deployment), Epic 2 (AVRO Producer-Consumer Flow), and Ep
 7. ✅ End-to-end message flow validated
 8. ✅ Backward compatibility testing (optional field addition)
 9. ✅ Incompatible change rejection testing (field renaming)
+10. ✅ JSON Schema Producer-Consumer Flow implemented and tested
+11. ✅ JSON Schema serialization/deserialization validated
 
 **Future enhancements:**
-- Epic 4: JSON Schema Producer-Consumer Flow
-- Additional schema evolution scenarios (field removal, type changes)
-- Performance benchmarking
+- JSON Schema evolution scenarios (similar to Epic 3)
+- Performance benchmarking (AVRO vs JSON Schema)
 - Multi-region schema replication testing
+- Additional schema formats (Protobuf, etc.)
 
 ## Additional Resources
 
