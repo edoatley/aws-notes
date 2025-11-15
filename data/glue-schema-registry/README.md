@@ -263,40 +263,102 @@ If the project includes a Gradle wrapper (`gradlew`), you can use it directly wi
 
 ### Step 4: Build Project
 
-*(This step will be completed in Epic 2 when the Java application code is added)*
-
-Once the Gradle project is available, build it:
+Once connected to the EC2 instance, clone the repository and build the project:
 
 ```bash
-cd <project-directory>
-./gradlew build
+# Clone the repository (if not already cloned)
+git clone <your-repo-url>
+cd <your-repo-name>/data/glue-schema-registry
+
+# Build the project using Gradle wrapper
+./gradlew build shadowJar
 ```
 
-Or if using the system Gradle:
+**What this does:**
+- Compiles Java source files
+- Generates Java classes from AVRO schema files
+- Creates a "fat JAR" with all dependencies at `build/libs/glue-schema-registry-testbed-all.jar`
 
-```bash
-gradle build
-```
+**Expected Output:**
+- Build should complete successfully with `BUILD SUCCESSFUL`
+- JAR file should be created at `build/libs/glue-schema-registry-testbed-all.jar`
 
-### Step 5: Run Tests (on EC2)
+### Step 5: Run AVRO Producer-Consumer Test
 
-*(This step will be completed in Epic 2-4 when the test applications are implemented)*
+This test demonstrates AVRO serialization/deserialization using AWS Glue Schema Registry.
 
-The test applications will be run from the EC2 instance. You'll need to:
+**Prerequisites:**
+- MSK bootstrap server string (retrieved in Step 1)
+- Project built successfully (Step 4)
 
-1. Open two SSM terminal sessions (one for producer, one for consumer)
-2. Run the consumer first in Terminal 1
-3. Run the producer in Terminal 2
+**Instructions:**
 
-Example commands (to be updated when code is available):
+1. **Open two SSM terminal sessions** (one for consumer, one for producer)
 
-```bash
-# Terminal 1: Consumer
-java -jar build/libs/glue-schema-registry-testbed.jar AvroConsumer <msk-bootstrap-servers>
+2. **Terminal 1: Start the Consumer**
+   ```bash
+   # Connect to EC2 instance (if not already connected)
+   aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
+   
+   # Navigate to project directory
+   cd <project-directory>/data/glue-schema-registry
+   
+   # Run the consumer
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroConsumer <BOOTSTRAP_SERVERS>
+   ```
+   
+   **Example:**
+   ```bash
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroConsumer boot-xxxxxx.yy.kafka-serverless.us-east-1.amazonaws.com:9098
+   ```
+   
+   The consumer will start and wait for messages. You should see:
+   ```
+   Consumer started, waiting for messages...
+   ```
 
-# Terminal 2: Producer
-java -jar build/libs/glue-schema-registry-testbed.jar AvroProducer <msk-bootstrap-servers>
-```
+3. **Terminal 2: Start the Producer**
+   ```bash
+   # Connect to EC2 instance in a new terminal
+   aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
+   
+   # Navigate to project directory
+   cd <project-directory>/data/glue-schema-registry
+   
+   # Run the producer
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducer <BOOTSTRAP_SERVERS>
+   ```
+   
+   **Example:**
+   ```bash
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducer boot-xxxxxx.yy.kafka-serverless.us-east-1.amazonaws.com:9098
+   ```
+   
+   The producer will send 10 messages and then exit. You should see:
+   ```
+   Sent payment: paymentId=payment-1, amount=100.50
+   Sent payment: paymentId=payment-2, amount=200.75
+   ...
+   Producer completed. Sent 10 messages.
+   ```
+
+4. **Verify Results:**
+   - **Terminal 1 (Consumer):** Should display 10 deserialized payment messages:
+     ```
+     Received payment: paymentId=payment-1, amount=100.50, timestamp=1234567890
+     Received payment: paymentId=payment-2, amount=200.75, timestamp=1234567891
+     ...
+     Consumer completed. Received 10 messages.
+     ```
+   
+   - **AWS Glue Console:** Navigate to AWS Glue → Schema Registry → `PaymentSchemaRegistry` → `payment-schema`
+     - You should see Schema Version 1 registered
+     - Schema definition should match the `Payment.avsc` file
+
+**Troubleshooting:**
+- If consumer doesn't receive messages, ensure producer ran successfully first
+- If schema registration fails, verify IAM permissions on EC2 instance role
+- If connection fails, verify MSK cluster is in `ACTIVE` state and bootstrap servers are correct
 
 ### Step 6: View Results
 
