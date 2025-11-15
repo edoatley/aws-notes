@@ -184,6 +184,8 @@ Resources:
                   - glue:CreateSchema
                   - glue:GetSchemaVersion
                   - glue:GetSchema
+                  - glue:GetSchemaByDefinition
+                  - glue:ListSchemaVersions
                 Resource: '*'
       Tags:
         - Key: Name

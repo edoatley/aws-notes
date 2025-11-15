@@ -351,19 +351,25 @@ schema.name=payment-schema
 
 **Instructions:**
 
-**Important:** The topic `payments-avro` must exist before the consumer can read from it. You have two options:
-
-**Option A: Create the topic first (recommended for first run)**
-```bash
-# Create the topic
-java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.CreateTopic application.properties
-```
-
-**Option B: Run producer first** - The producer will automatically create the topic when it sends the first message.
+**Important:** The topic `payments-avro` must exist before messages can be sent or consumed. The producer will automatically create the topic, but for the first run, it's recommended to create it explicitly.
 
 1. **Open two SSM terminal sessions** (one for consumer, one for producer)
 
-2. **Terminal 1: Start the Consumer** (after topic exists)
+2. **Terminal 1: Create the Topic (First Run Only)**
+   ```bash
+   # Connect to EC2 instance
+   aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
+   
+   # Navigate to project directory
+   cd <project-directory>/data/glue-schema-registry
+   
+   # Create the topic
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.CreateTopic application.properties
+   ```
+   
+   **Note:** The producer will also create the topic automatically if it doesn't exist, but creating it first ensures it's ready before starting the consumer.
+
+3. **Terminal 1: Start the Consumer** (after topic exists)
    ```bash
    # Connect to EC2 instance (if not already connected)
    aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
@@ -385,7 +391,7 @@ java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.CreateTopic
    Consumer started, waiting for messages...
    ```
 
-3. **Terminal 2: Start the Producer** (or create topic first)
+4. **Terminal 2: Start the Producer**
    ```bash
    # Connect to EC2 instance in a new terminal
    aws ssm start-session --target <EC2_INSTANCE_ID> --region us-east-1 --profile streaming
@@ -393,11 +399,7 @@ java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.CreateTopic
    # Navigate to project directory
    cd <project-directory>/data/glue-schema-registry
    
-   # Option 1: Create topic first, then run producer
-   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.CreateTopic application.properties
-   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducer application.properties
-   
-   # Option 2: Just run producer (it will create the topic automatically)
+   # Run the producer (it will create the topic automatically if it doesn't exist)
    java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducer application.properties
    ```
    
@@ -431,6 +433,8 @@ java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.CreateTopic
 - If consumer doesn't receive messages, ensure producer ran successfully first
 - If schema registration fails, verify IAM permissions on EC2 instance role
 - If connection fails, verify MSK cluster is in `ACTIVE` state and bootstrap servers are correct
+- If you see `UNKNOWN_TOPIC_OR_PARTITION`, create the topic first using `CreateTopic` utility
+- If you see `AccessDeniedException` for Glue operations, wait 30-60 seconds after stack update for IAM permissions to propagate
 
 ### Step 6: View Results
 
@@ -606,15 +610,128 @@ gradle -v
 
 **Note:** When the Gradle project is available (Epic 2), you can use the Gradle wrapper (`./gradlew`) which doesn't require Gradle to be in your PATH.
 
+### UNKNOWN_TOPIC_OR_PARTITION Error
+
+If you see this error when running the producer or consumer:
+
+```output
+Error while fetching metadata with correlation id X : {payments-avro=UNKNOWN_TOPIC_OR_PARTITION}
+```
+
+**Cause:** MSK Serverless doesn't auto-create topics. The topic must be created explicitly.
+
+**Solution:** Create the topic first using the `CreateTopic` utility:
+
+```bash
+java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.CreateTopic application.properties
+```
+
+Alternatively, the producer will automatically create the topic when it sends the first message, but creating it first ensures it's ready before starting the consumer.
+
+### Glue Permission Errors
+
+If you see errors like:
+
+```output
+User: arn:aws:sts::...:assumed-role/GlueSchemaRegistryEC2InstanceRole/... is not authorized to perform: glue:GetSchemaByDefinition
+```
+
+**Cause:** IAM permissions may not have propagated yet, or the CloudFormation template needs to be updated.
+
+**Solution:**
+1. Wait 30-60 seconds after updating the CloudFormation stack for IAM permissions to propagate
+2. Verify the IAM role includes all required Glue permissions:
+   - `glue:RegisterSchemaVersion`
+   - `glue:CreateSchema`
+   - `glue:GetSchemaVersion`
+   - `glue:GetSchema`
+   - `glue:GetSchemaByDefinition`
+   - `glue:ListSchemaVersions`
+3. If permissions are missing, update the CloudFormation template and redeploy
+
+### SSM Session Management
+
+If SSM sessions become unresponsive or locked:
+
+**List active sessions:**
+```bash
+aws ssm describe-sessions \
+  --state Active \
+  --region us-east-1 \
+  --profile streaming \
+  --query 'Sessions[*].[SessionId,Target,Status]' \
+  --output table
+```
+
+**Terminate a specific session:**
+```bash
+aws ssm terminate-session \
+  --session-id <SESSION_ID> \
+  --region us-east-1 \
+  --profile streaming
+```
+
+**Terminate all sessions for your instance:**
+```bash
+# Get instance ID
+INSTANCE_ID=$(aws cloudformation describe-stacks \
+  --stack-name glue-schema-registry-testbed \
+  --region us-east-1 \
+  --profile streaming \
+  --query 'Stacks[0].Outputs[?OutputKey==`EC2InstanceId`].OutputValue' \
+  --output text)
+
+# List and terminate all active sessions
+for session in $(aws ssm describe-sessions \
+  --state Active \
+  --region us-east-1 \
+  --profile streaming \
+  --query 'Sessions[?Target==`'$INSTANCE_ID'`].SessionId' \
+  --output text); do
+  aws ssm terminate-session --session-id "$session" --region us-east-1 --profile streaming
+done
+```
+
+**Tip:** Use `tmux` or `screen` inside SSM sessions to persist work if the session disconnects:
+```bash
+# Start tmux
+tmux
+
+# If session disconnects, reconnect and run:
+tmux attach
+```
+
+### MSK IAM Authentication Errors
+
+If you see `SaslAuthenticationException: Access denied` or `TopicAuthorizationException`:
+
+**Cause:** IAM permissions for MSK may be incorrect or not propagated.
+
+**Solution:**
+1. Verify the IAM role has permissions for:
+   - Cluster-level: `kafka-cluster:Connect`, `kafka-cluster:DescribeCluster`
+   - Topic-level: `kafka-cluster:CreateTopic`, `kafka-cluster:WriteData`, `kafka-cluster:ReadData`, `kafka-cluster:DescribeTopic`
+   - Group-level: `kafka-cluster:AlterGroup`, `kafka-cluster:DescribeGroup`
+2. Ensure the CloudFormation template uses the exact MSK cluster ARN (not wildcards)
+3. Wait 30-60 seconds after stack updates for permissions to propagate
+4. Restart your application to pick up new credentials
+
 ## Next Steps
 
-After Epic 1 (Infrastructure Deployment) is complete:
+Epic 1 (Infrastructure Deployment) and Epic 2 (AVRO Producer-Consumer Flow) are complete:
 
 1. ✅ Infrastructure deployed
 2. ✅ MSK Bootstrap Servers retrieved
 3. ✅ Connected to EC2 instance
 4. ✅ Verified Java 11 and Gradle installation
-5. ⏭️ Proceed to Epic 2: AVRO Producer-Consumer Flow
+5. ✅ AVRO Producer-Consumer Flow implemented and tested
+6. ✅ Glue Schema Registry integration working
+7. ✅ End-to-end message flow validated
+
+**Future enhancements:**
+- Epic 3: JSON Schema Producer-Consumer Flow
+- Schema evolution and compatibility testing
+- Performance benchmarking
 
 ## Additional Resources
 
