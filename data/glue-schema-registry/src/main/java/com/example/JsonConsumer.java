@@ -7,6 +7,8 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.clients.CommonClientConfigs;
 import com.amazonaws.services.schemaregistry.deserializers.GlueSchemaRegistryKafkaDeserializer;
+import com.amazonaws.services.schemaregistry.serializers.json.JsonDataWithSchema;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,8 +86,11 @@ public class JsonConsumer {
         logger.info("Using Registry: {}", props.getProperty("registryName"));
         logger.info("Using Data Format: JSON");
 
-        // Create consumer with SensorReading POJO
-        KafkaConsumer<String, SensorReading> consumer = new KafkaConsumer<>(props);
+        // Create consumer - Glue Schema Registry returns JsonDataWithSchema for JSON format
+        KafkaConsumer<String, JsonDataWithSchema> consumer = new KafkaConsumer<>(props);
+        
+        // ObjectMapper for deserializing JSON data to POJO
+        ObjectMapper objectMapper = new ObjectMapper();
 
         try {
             // Subscribe to topic
@@ -96,10 +101,18 @@ public class JsonConsumer {
 
             // Poll for messages
             while (messageCount < EXPECTED_MESSAGE_COUNT) {
-                ConsumerRecords<String, SensorReading> records = consumer.poll(Duration.ofSeconds(1));
+                ConsumerRecords<String, JsonDataWithSchema> records = consumer.poll(Duration.ofSeconds(1));
 
-                for (ConsumerRecord<String, SensorReading> record : records) {
-                    SensorReading sensorReading = record.value();
+                for (ConsumerRecord<String, JsonDataWithSchema> record : records) {
+                    // Extract JsonDataWithSchema wrapper
+                    JsonDataWithSchema jsonDataWithSchema = record.value();
+                    
+                    // Get the actual JSON data (as Object, typically a Map or the actual data structure)
+                    Object jsonData = jsonDataWithSchema.getPayload();
+                    
+                    // Deserialize to SensorReading POJO using Jackson
+                    SensorReading sensorReading = objectMapper.convertValue(jsonData, SensorReading.class);
+                    
                     logger.info("Received sensor reading: sensorId={}, temperature={}, humidity={}, timestamp={}",
                                sensorReading.getSensorId(),
                                sensorReading.getTemperature(),

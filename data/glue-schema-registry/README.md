@@ -987,6 +987,27 @@ If you prefer separate terminals (though less stable with SSM):
 - Consumer logs show all fields: `sensorId`, `temperature`, `humidity`, `timestamp`
 - Schema appears in Glue console with JSON Schema structure
 
+**Actual Behaviour**
+
+Producer created messages:
+
+```output
+[main] INFO com.example.JsonProducer - Sent sensor reading: sensorId=sensor-1, temperature=20.5, humidity=40.5, timestamp=1763226340573
+[main] INFO com.example.JsonProducer - Sent sensor reading: sensorId=sensor-2, temperature=21.0, humidity=41.0, timestamp=1763226342139
+[main] INFO com.example.JsonProducer - Sent sensor reading: sensorId=sensor-3, temperature=21.5, humidity=41.5, timestamp=1763226342245
+[main] INFO com.example.JsonProducer - Sent sensor reading: sensorId=sensor-4, temperature=22.0, humidity=42.0, timestamp=1763226342350
+[main] INFO com.example.JsonProducer - Sent sensor reading: sensorId=sensor-5, temperature=22.5, humidity=42.5, timestamp=1763226342455
+[main] INFO com.example.JsonProducer - Sent sensor reading: sensorId=sensor-6, temperature=23.0, humidity=43.0, timestamp=1763226342562
+[main] INFO com.example.JsonProducer - Sent sensor reading: sensorId=sensor-7, temperature=23.5, humidity=43.5, timestamp=1763226342672
+[main] INFO com.example.JsonProducer - Sent sensor reading: sensorId=sensor-8, temperature=24.0, humidity=44.0, timestamp=1763226342777
+[main] INFO com.example.JsonProducer - Sent sensor reading: sensorId=sensor-9, temperature=24.5, humidity=44.5, timestamp=1763226342883
+[main] INFO com.example.JsonProducer - Sent sensor reading: sensorId=sensor-10, temperature=25.0, humidity=45.0, timestamp=1763226342989
+```
+
+the consumer 
+
+
+
 **Troubleshooting:**
 - If consumer doesn't receive messages, ensure producer ran successfully first
 - If schema registration fails, verify IAM permissions on EC2 instance role
