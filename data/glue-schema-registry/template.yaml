@@ -132,6 +132,7 @@ Resources:
   
   EC2InstanceRole:
     Type: AWS::IAM::Role
+    DependsOn: MSKServerlessCluster
     Properties:
       RoleName: GlueSchemaRegistryEC2InstanceRole
       AssumeRolePolicyDocument:
@@ -144,6 +145,29 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Policies:
+        - PolicyName: AWSMSKServerlessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kafka-cluster:Connect
+                  - kafka-cluster:DescribeCluster
+                Resource: !Ref MSKServerlessCluster
+              - Effect: Allow
+                Action:
+                  - kafka-cluster:CreateTopic
+                  - kafka-cluster:DescribeTopic
+                  - kafka-cluster:AlterTopic
+                  - kafka-cluster:DeleteTopic
+                  - kafka-cluster:WriteData
+                  - kafka-cluster:ReadData
+                Resource: !Sub "arn:aws:kafka:${AWS::Region}:${AWS::AccountId}:topic/glue-schema-registry-test-cluster/*"
+              - Effect: Allow
+                Action:
+                  - kafka-cluster:AlterGroup
+                  - kafka-cluster:DescribeGroup
+                Resource: !Sub "arn:aws:kafka:${AWS::Region}:${AWS::AccountId}:group/glue-schema-registry-test-cluster/*"
         - PolicyName: GlueSchemaRegistryPermissions
           PolicyDocument:
             Version: '2012-10-17'
@@ -154,13 +178,6 @@ Resources:
                   - glue:CreateSchema
                   - glue:GetSchemaVersion
                   - glue:GetSchema
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - kafka-cluster:WriteData
-                  - kafka-cluster:ReadData
-                  - kafka-cluster:DescribeCluster
-                  - kafka:CreateTopic
                 Resource: '*'
       Tags:
         - Key: Name

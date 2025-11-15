@@ -22,7 +22,8 @@
             "!Select",
             "!Select sequence",
             "!Split",
-            "!Join sequence"
+            "!Join sequence",
+            "!Transform"
         ],
         "yaml.format.enable": true
     }
