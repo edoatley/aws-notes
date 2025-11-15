@@ -10,6 +10,9 @@ import com.amazonaws.services.schemaregistry.deserializers.GlueSchemaRegistryKaf
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
@@ -24,37 +27,61 @@ public class AvroConsumer {
 
     public static void main(String[] args) {
         if (args.length < 1) {
-            System.err.println("Usage: AvroConsumer <bootstrap-servers>");
+            System.err.println("Usage: AvroConsumer <properties-file> [bootstrap-servers-override]");
+            System.err.println("  properties-file: Path to application.properties file");
+            System.err.println("  bootstrap-servers-override: Optional override for bootstrap.servers");
             System.exit(1);
         }
 
-        String bootstrapServers = args[0];
-        logger.info("Starting AvroConsumer with bootstrap servers: {}", bootstrapServers);
+        String propertiesFile = args[0];
+        logger.info("Loading properties from: {}", propertiesFile);
 
-        // Create consumer properties
+        // Load properties from file
         Properties props = new Properties();
+        try (InputStream input = new FileInputStream(propertiesFile)) {
+            props.load(input);
+            logger.info("Properties loaded successfully");
+        } catch (IOException e) {
+            logger.error("Failed to load properties file: {}", propertiesFile, e);
+            System.exit(1);
+        }
 
-        // Kafka consumer properties
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, 
+        // Override bootstrap servers if provided as second argument
+        if (args.length >= 2) {
+            String bootstrapServers = args[1];
+            props.setProperty("bootstrap.servers", bootstrapServers);
+            logger.info("Overriding bootstrap.servers with: {}", bootstrapServers);
+        }
+
+        // Set Kafka consumer properties (if not already in properties file)
+        if (!props.containsKey(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG)) {
+            logger.error("bootstrap.servers not found in properties file");
+            System.exit(1);
+        }
+        props.putIfAbsent(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, 
                   org.apache.kafka.common.serialization.StringDeserializer.class.getName());
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, 
+        props.putIfAbsent(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, 
                   GlueSchemaRegistryKafkaDeserializer.class.getName());
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, GROUP_ID);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
+        props.putIfAbsent(ConsumerConfig.GROUP_ID_CONFIG, props.getProperty("consumer.group.id", GROUP_ID));
+        props.putIfAbsent(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.putIfAbsent(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
 
-        // MSK IAM Authentication properties
-        props.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SASL_SSL");
-        props.put(SaslConfigs.SASL_MECHANISM, "AWS_MSK_IAM");
-        props.put(SaslConfigs.SASL_JAAS_CONFIG, "software.amazon.msk.auth.iam.IAMLoginModule required;");
-        props.put(SaslConfigs.SASL_CLIENT_CALLBACK_HANDLER_CLASS, 
+        // MSK IAM Authentication properties (if not already set)
+        props.putIfAbsent(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SASL_SSL");
+        props.putIfAbsent(SaslConfigs.SASL_MECHANISM, "AWS_MSK_IAM");
+        props.putIfAbsent(SaslConfigs.SASL_JAAS_CONFIG, "software.amazon.msk.auth.iam.IAMLoginModule required;");
+        props.putIfAbsent(SaslConfigs.SASL_CLIENT_CALLBACK_HANDLER_CLASS, 
                   "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
 
-        // Glue Schema Registry properties
-        props.put("aws.region", AWS_REGION);
-        props.put("avroRecordType", "SPECIFIC_RECORD");
-        props.put("registryName", REGISTRY_NAME);
+        // Glue Schema Registry properties - use correct property names
+        // The library expects AWS_REGION (uppercase) for region
+        String region = props.getProperty("aws.region", AWS_REGION);
+        props.setProperty("AWS_REGION", region);  // Library expects uppercase
+        props.putIfAbsent("avroRecordType", props.getProperty("avro.record.type", "SPECIFIC_RECORD"));
+        props.putIfAbsent("registryName", props.getProperty("registry.name", REGISTRY_NAME));
+        
+        logger.info("Using AWS Region: {}", region);
+        logger.info("Using Registry: {}", props.getProperty("registryName"));
 
         // Create consumer
         KafkaConsumer<String, Payment> consumer = new KafkaConsumer<>(props);

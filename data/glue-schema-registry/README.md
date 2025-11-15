@@ -326,6 +326,29 @@ This test demonstrates AVRO serialization/deserialization using AWS Glue Schema 
 - MSK bootstrap server string (retrieved in Step 1)
 - Project built successfully (Step 4)
 
+**Setup Properties File:**
+
+Create a properties file with your configuration values:
+
+```bash
+# Copy the template
+cp application.properties.template application.properties
+
+# Edit the file with your values
+nano application.properties  # or use vi, vim, etc.
+```
+
+Update the `bootstrap.servers` value in `application.properties` with your MSK bootstrap server string:
+
+```properties
+bootstrap.servers=boot-z77hod6c.c2.kafka-serverless.us-east-1.amazonaws.com:9098
+aws.region=us-east-1
+registry.name=PaymentSchemaRegistry
+schema.name=payment-schema
+```
+
+**Note:** The `application.properties` file contains all necessary configuration. The applications will read from this file.
+
 **Instructions:**
 
 1. **Open two SSM terminal sessions** (one for consumer, one for producer)
@@ -338,13 +361,13 @@ This test demonstrates AVRO serialization/deserialization using AWS Glue Schema 
    # Navigate to project directory
    cd <project-directory>/data/glue-schema-registry
    
-   # Run the consumer
-   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroConsumer <BOOTSTRAP_SERVERS>
+   # Run the consumer (using properties file)
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroConsumer application.properties
    ```
    
-   **Example:**
+   **Optional:** You can override bootstrap servers if needed:
    ```bash
-   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroConsumer boot-xxxxxx.yy.kafka-serverless.us-east-1.amazonaws.com:9098
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroConsumer application.properties boot-xxxxxx.yy.kafka-serverless.us-east-1.amazonaws.com:9098
    ```
    
    The consumer will start and wait for messages. You should see:
@@ -360,13 +383,13 @@ This test demonstrates AVRO serialization/deserialization using AWS Glue Schema 
    # Navigate to project directory
    cd <project-directory>/data/glue-schema-registry
    
-   # Run the producer
-   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducer <BOOTSTRAP_SERVERS>
+   # Run the producer (using properties file)
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducer application.properties
    ```
    
-   **Example:**
+   **Optional:** You can override bootstrap servers if needed:
    ```bash
-   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducer boot-xxxxxx.yy.kafka-serverless.us-east-1.amazonaws.com:9098
+   java -cp build/libs/glue-schema-registry-testbed-all.jar com.example.AvroProducer application.properties boot-xxxxxx.yy.kafka-serverless.us-east-1.amazonaws.com:9098
    ```
    
    The producer will send 10 messages and then exit. You should see:

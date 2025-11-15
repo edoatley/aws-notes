@@ -9,6 +9,9 @@ import com.amazonaws.services.schemaregistry.serializers.GlueSchemaRegistryKafka
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Properties;
 
 public class AvroProducer {
@@ -20,39 +23,64 @@ public class AvroProducer {
 
     public static void main(String[] args) {
         if (args.length < 1) {
-            System.err.println("Usage: AvroProducer <bootstrap-servers>");
+            System.err.println("Usage: AvroProducer <properties-file> [bootstrap-servers-override]");
+            System.err.println("  properties-file: Path to application.properties file");
+            System.err.println("  bootstrap-servers-override: Optional override for bootstrap.servers");
             System.exit(1);
         }
 
-        String bootstrapServers = args[0];
-        logger.info("Starting AvroProducer with bootstrap servers: {}", bootstrapServers);
+        String propertiesFile = args[0];
+        logger.info("Loading properties from: {}", propertiesFile);
 
-        // Create producer properties
+        // Load properties from file
         Properties props = new Properties();
+        try (InputStream input = new FileInputStream(propertiesFile)) {
+            props.load(input);
+            logger.info("Properties loaded successfully");
+        } catch (IOException e) {
+            logger.error("Failed to load properties file: {}", propertiesFile, e);
+            System.exit(1);
+        }
 
-        // Kafka producer properties
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, 
+        // Override bootstrap servers if provided as second argument
+        if (args.length >= 2) {
+            String bootstrapServers = args[1];
+            props.setProperty("bootstrap.servers", bootstrapServers);
+            logger.info("Overriding bootstrap.servers with: {}", bootstrapServers);
+        }
+
+        // Set Kafka producer properties (if not already in properties file)
+        if (!props.containsKey(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG)) {
+            logger.error("bootstrap.servers not found in properties file");
+            System.exit(1);
+        }
+        props.putIfAbsent(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, 
                   org.apache.kafka.common.serialization.StringSerializer.class.getName());
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, 
+        props.putIfAbsent(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, 
                   GlueSchemaRegistryKafkaSerializer.class.getName());
-        props.put(ProducerConfig.ACKS_CONFIG, "all");
-        props.put(ProducerConfig.RETRIES_CONFIG, 3);
+        props.putIfAbsent(ProducerConfig.ACKS_CONFIG, "all");
+        props.putIfAbsent(ProducerConfig.RETRIES_CONFIG, "3");
 
-        // MSK IAM Authentication properties
-        props.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SASL_SSL");
-        props.put(SaslConfigs.SASL_MECHANISM, "AWS_MSK_IAM");
-        props.put(SaslConfigs.SASL_JAAS_CONFIG, "software.amazon.msk.auth.iam.IAMLoginModule required;");
-        props.put(SaslConfigs.SASL_CLIENT_CALLBACK_HANDLER_CLASS, 
+        // MSK IAM Authentication properties (if not already set)
+        props.putIfAbsent(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SASL_SSL");
+        props.putIfAbsent(SaslConfigs.SASL_MECHANISM, "AWS_MSK_IAM");
+        props.putIfAbsent(SaslConfigs.SASL_JAAS_CONFIG, "software.amazon.msk.auth.iam.IAMLoginModule required;");
+        props.putIfAbsent(SaslConfigs.SASL_CLIENT_CALLBACK_HANDLER_CLASS, 
                   "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
 
-        // Glue Schema Registry properties
-        props.put("aws.region", AWS_REGION);
-        props.put("dataFormat", "AVRO");
-        props.put("registryName", REGISTRY_NAME);
-        props.put("schemaName", SCHEMA_NAME);
-        props.put("schemaAutoRegistrationEnabled", true);
-        props.put("compatibility", "BACKWARD");
+        // Glue Schema Registry properties - use correct property names
+        // The library expects these specific property names
+        String region = props.getProperty("aws.region", AWS_REGION);
+        props.setProperty("AWS_REGION", region);  // Library expects uppercase
+        props.putIfAbsent("dataFormat", "AVRO");
+        props.putIfAbsent("registryName", props.getProperty("registry.name", REGISTRY_NAME));
+        props.putIfAbsent("schemaName", props.getProperty("schema.name", SCHEMA_NAME));
+        props.putIfAbsent("schemaAutoRegistrationEnabled", "true");
+        props.putIfAbsent("compatibility", "BACKWARD");
+        
+        logger.info("Using AWS Region: {}", region);
+        logger.info("Using Registry: {}", props.getProperty("registryName"));
+        logger.info("Using Schema: {}", props.getProperty("schemaName"));
 
         // Create producer
         KafkaProducer<String, Payment> producer = new KafkaProducer<>(props);

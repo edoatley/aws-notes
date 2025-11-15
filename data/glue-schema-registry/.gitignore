@@ -17,3 +17,6 @@ build/
 .DS_Store
 Thumbs.db
 
+# Properties file with actual values (template is committed)
+application.properties
+
