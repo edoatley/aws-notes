@@ -1,0 +1,28 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Lab 7 - Event-driven fan-out with S3 -> SNS -> SQS and Lambda consumer.
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: S3 bucket name for uploads.
+  LambdaRuntime:
+    Type: String
+    Default: python3.12
+    AllowedValues:
+      - python3.12
+      - nodejs18.x
+    Description: Runtime for the AnalyticsLogger function.
+
+Resources:
+  # TODO: S3 Bucket for source objects.
+  # TODO: SNS Topic for fan-out.
+  # TODO: Two SQS Queues; subscribe both to SNS Topic.
+  # TODO: Lambda execution role with permissions for CloudWatch Logs and SQS access.
+  # TODO: Lambda function (AnalyticsLogger) triggered by ImageAnalyticsQueue.
+  # TODO: S3 Event Notification sending ObjectCreated events to SNS Topic.
+
+Outputs:
+  # TODO: Output Bucket Name, Topic ARN, Queue URLs/ARNs, and Lambda Function Name.
+
+

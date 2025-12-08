@@ -46,5 +46,6 @@
   "yaml.schemas": {
     // You can add CloudFormation schema if available
     // "https://raw.githubusercontent.com/aws-cloudformation/cloudformation-cli/master/src/rpdk/core/data/schema/provider.definition.schema.v1.json": "template.yaml"
-  }
+  },
+  "java.compile.nullAnalysis.mode": "automatic"
 }

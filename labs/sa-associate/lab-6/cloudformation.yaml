@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Lab 6 - HA web tier with Launch Template, ASG, and Application Load Balancer.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Existing VPC ID.
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Two public subnets in different AZs.
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 Key Pair for SSH access to instances.
+
+Resources:
+  # TODO: Security Group for ALB (HTTP 80 from 0.0.0.0/0).
+  # TODO: Security Group for web instances (HTTP from ALB SG, SSH from admin IP).
+  # TODO: Launch Template with user data to install/start httpd and write hostname page.
+  # TODO: Target Group on port 80.
+  # TODO: Application Load Balancer with listener forwarding to Target Group.
+  # TODO: Auto Scaling Group spanning public subnets using the Launch Template (Desired=2, Min=2, Max=4).
+
+Outputs:
+  # TODO: Output ALB DNS name, Target Group ARN, ASG name, and Launch Template ID.
+
+

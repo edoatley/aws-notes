@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Lab 8 - Serverless API using API Gateway HTTP API, Lambda, and DynamoDB.
+
+Parameters:
+  TableName:
+    Type: String
+    Default: MusicLibrary
+    Description: DynamoDB table name.
+  LambdaRuntime:
+    Type: String
+    Default: python3.12
+    AllowedValues:
+      - python3.12
+      - nodejs18.x
+    Description: Runtime for the Lambda function.
+
+Resources:
+  # TODO: DynamoDB Table with partition key Artist (String) and sort key SongTitle (String), on-demand capacity.
+  # TODO: IAM Role for Lambda with CRUD permissions scoped to the table.
+  # TODO: Lambda Function (CrudApiHandler) using the role.
+  # TODO: API Gateway HTTP API with routes POST /music, GET /music, GET /music/{Artist} integrated to Lambda.
+
+Outputs:
+  # TODO: Output API Invoke URL, Lambda Function Name, and DynamoDB Table Name.
+
+

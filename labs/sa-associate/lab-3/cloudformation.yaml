@@ -1,0 +1,32 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Lab 3 - Custom VPC with public/private subnets, route tables, and EC2 instances.
+
+Parameters:
+  VpcCidr:
+    Type: String
+    Default: 10.10.0.0/16
+    Description: CIDR block for the VPC.
+  PublicSubnetCidr:
+    Type: String
+    Default: 10.10.1.0/24
+    Description: CIDR block for the public subnet.
+  PrivateSubnetCidr:
+    Type: String
+    Default: 10.10.2.0/24
+    Description: CIDR block for the private subnet.
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 Key Pair for SSH access.
+
+Resources:
+  # TODO: VPC, Internet Gateway, Attachments.
+  # TODO: Public and Private Subnets in one AZ.
+  # TODO: Route Tables with appropriate routes and associations.
+  # TODO: Security Groups for public and private instances.
+  # TODO: EC2 Instances: public with public IP, private without public IP.
+
+Outputs:
+  # TODO: Output VPC ID, Subnet IDs, Security Group IDs, and Instance IDs/Private IPs.
+
+

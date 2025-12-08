@@ -1,0 +1,16 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Lab 0 - Billing Alarm with SNS notification for estimated charges.
+
+Parameters:
+  EmailSubscription:
+    Type: String
+    Description: Email address to subscribe to billing alarm notifications.
+
+Resources:
+  # TODO: Add SNS Topic, SNS Subscription (email), and CloudWatch Alarm on EstimatedCharges.
+
+Outputs:
+  # TODO: Output Topic ARN and Alarm Name for reference.
+
+
