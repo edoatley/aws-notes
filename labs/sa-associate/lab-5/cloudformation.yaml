@@ -1,0 +1,38 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Lab 5 - Two-tier application with web server in public subnet and RDS in private subnets.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Existing VPC ID (Multi-AZ).
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Two public subnets (different AZs) for web tier.
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Two private subnets (different AZs) for database subnet group.
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 Key Pair for SSH access to web server.
+  DBUsername:
+    Type: String
+    NoEcho: true
+    Description: Master username for RDS.
+  DBPassword:
+    Type: String
+    NoEcho: true
+    Description: Master password for RDS.
+
+Resources:
+  # TODO: Security Group web-sg (SSH from admin IP, HTTP 80 from 0.0.0.0/0).
+  # TODO: Security Group db-sg (MySQL 3306 from web-sg).
+  # TODO: EC2 Web Server instance in public subnet with web-sg.
+  # TODO: DB Subnet Group using private subnets.
+  # TODO: RDS MySQL instance (db.t3.micro) in private subnets, not publicly accessible.
+
+Outputs:
+  # TODO: Output Web Server public DNS/IP, RDS endpoint, SG IDs.
+
+
+

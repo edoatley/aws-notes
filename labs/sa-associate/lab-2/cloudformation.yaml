@@ -1,0 +1,19 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Lab 2 - Secure static website using S3 origin and CloudFront with Origin Access Control.
+
+Parameters:
+  WebsiteBucketName:
+    Type: String
+    Description: S3 bucket name for the website content.
+
+Resources:
+  # TODO: Define S3 Bucket with public access blocked.
+  # TODO: Define CloudFront Distribution with OAC pointing to the bucket.
+  # TODO: Add Bucket Policy granting CloudFront access (use generated OAC principal).
+
+Outputs:
+  # TODO: Output CloudFront DomainName and Bucket Name.
+
+
+

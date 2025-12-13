@@ -1,0 +1,29 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Lab 4 - NAT Instance setup for outbound internet from private subnet.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Existing VPC ID (from Lab 3).
+  PublicSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Public subnet for the NAT instance.
+  PrivateRouteTableId:
+    Type: String
+    Description: Route table ID for the private subnet to update with default route.
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 Key Pair for SSH access to NAT instance.
+
+Resources:
+  # TODO: Security Group allowing SSH from admin IPs.
+  # TODO: EC2 NAT Instance (t3.micro) with public IP.
+  # Note: Disabling source/destination check must be done manually or via a custom resource/CLI.
+  # TODO: Route in private route table to point 0.0.0.0/0 to the NAT instance (instance ID target).
+
+Outputs:
+  # TODO: Output NAT Instance ID, Security Group ID, and guidance to disable source/dest checks.
+
+
+

@@ -1,0 +1,17 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Lab 1 - IAM foundations with users, groups, and managed policy attachments.
+
+Parameters:
+  # TODO: Add parameters for user names, group names, and optional tags.
+
+Resources:
+  # TODO: Define IAM Groups (Developers, Auditors) and attach AWS managed policies.
+  # TODO: Define IAM Users (dev-user, readonly-user) and add to groups.
+  # Note: Root MFA setup must be done manually outside CloudFormation.
+
+Outputs:
+  # TODO: Output user ARNs and group names if helpful.
+
+
+
