@@ -1,5 +1,17 @@
 # Hands-On Lab Guide for the AWS Certified Solutions Architect - Associate (SAA-C03)
 
+## Pre-requisites
+
+1. Configured AWS SSO for account `793976186123`
+
+2. Set up CLI access 
+  
+```bash
+aws configure sso
+```
+
+Then follow guidance here https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html
+
 ## Section 1: A Strategic Approach to SAA-C03 Hands-On Preparation
 
 ### Introduction to the SAA-C03

@@ -6,11 +6,49 @@ Parameters:
   EmailSubscription:
     Type: String
     Description: Email address to subscribe to billing alarm notifications.
+  DollarThreshold:
+    Type: Number
+    Description: Threshold for estimated charges in USD.
+    Default: 8.0
 
 Resources:
-  # TODO: Add SNS Topic, SNS Subscription (email), and CloudWatch Alarm on EstimatedCharges.
+  BillingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: High Estimated Charges
+      AlarmName: HighEstimatedChargesAlarm
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      MetricName: EstimatedCharges
+      Namespace: AWS/Billing
+      Period: 21600
+      Statistic: Maximum
+      Threshold: !Ref DollarThreshold
+      TreatMissingData: breaching
+      Dimensions:
+        - Name: Currency
+          Value: USD
+      AlarmActions:
+        - !Ref NotificationTopic
+
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: BillingAlarmTopic
+      DisplayName: Billing Alarm Topic
+
+  NotificationTopicSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref EmailSubscription
+      Protocol: email
+      TopicArn: !Ref NotificationTopic
 
 Outputs:
-  # TODO: Output Topic ARN and Alarm Name for reference.
-
+  AlarmName:
+    Value: !Ref BillingAlarm
+  NotificationTopicArn:
+    Value: !Ref NotificationTopic
+  NotificationTopicSubscriptionArn:
+    Value: !Ref NotificationTopicSubscription
 

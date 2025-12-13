@@ -60,6 +60,79 @@ Create a cost-protection billing alarm in `us-east-1` that emails when estimated
 
 ### CloudFormation
 
-_Add your implementation notes, console steps, and any CLI/SDK commands here._
+1. Create the [template](cloudformation.yaml) 
+
+2. Login
+
+```bash
+aws sso login --profile sandbox
+```
+
+3. Validate the template:
+
+```bash
+aws cloudformation validate-template \
+    --template-body file://cloudformation.yaml \
+    --region us-east-1 \
+    --profile sandbox
+```
+
+4. Deploy the stack (replace `YOUR_EMAIL@example.com` with your email address):
+
+```bash
+aws cloudformation create-stack \
+    --stack-name lab-0-billing-alarm \
+    --template-body file://cloudformation.yaml \
+    --region us-east-1 \
+    --profile sandbox \
+    --parameters ParameterKey=EmailSubscription,ParameterValue=edoatley+sandbox@icloud.com \
+                 ParameterKey=DollarThreshold,ParameterValue=8.0
+```
+
+**Note:** Billing metrics are only available in `us-east-1`, so the stack must be deployed in that region.
+
+5. Check stack status:
+
+```bash
+aws cloudformation describe-stacks \
+    --stack-name lab-0-billing-alarm \
+    --region us-east-1 \
+    --profile sandbox \
+    --query 'Stacks[0].StackStatus'
+```
+
+6. Wait for stack creation to be `CREATE_COMPLETE`, then check your email for the SNS subscription confirmation. Click the confirmation link to activate the subscription.
+
+7. Verify the alarm was created:
+
+```bash
+aws cloudwatch describe-alarms \
+    --alarm-names HighEstimatedChargesAlarm \
+    --region us-east-1 \
+    --profile sandbox
+```
+
+we should see that it is there and not triggering.
+
+8. (Optional) Update the stack if you need to change parameters:
+
+```bash
+aws cloudformation update-stack \
+    --stack-name lab-0-billing-alarm \
+    --template-body file://cloudformation.yaml \
+    --region us-east-1 \
+    --profile sandbox \
+    --parameters ParameterKey=EmailSubscription,ParameterValue=YOUR_EMAIL@example.com \
+                 ParameterKey=DollarThreshold,ParameterValue=8.0
+```
+
+9. (Optional) Delete the stack when done:
+
+```bash
+aws cloudformation delete-stack \
+    --stack-name lab-0-billing-alarm \
+    --region us-east-1 \
+    --profile sandbox
+```
 
 
