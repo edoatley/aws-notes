@@ -1,0 +1,31 @@
+# AWS Glue Schema Registry Configuration (JSON)
+# Copy this file to application-json.properties and update with your values
+
+# MSK Configuration
+bootstrap.servers=boot-xxxxxx.yy.kafka-serverless.us-east-1.amazonaws.com:9098
+
+# AWS Region (will be converted to AWS_REGION internally)
+aws.region=us-east-1
+
+# Glue Schema Registry Configuration (JSON)
+registry.name=PaymentSchemaRegistry
+schema.name=sensor-schema
+data.format=JSON
+schema.auto.registration.enabled=true
+compatibility=BACKWARD
+
+# Consumer-specific (for JsonConsumer)
+consumer.group.id=sensor-consumer-group
+
+# MSK IAM Authentication
+security.protocol=SASL_SSL
+sasl.mechanism=AWS_MSK_IAM
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
+sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
+
+# Kafka Serializers/Deserializers (set automatically if not specified)
+# key.serializer=org.apache.kafka.common.serialization.StringSerializer
+# value.serializer=com.amazonaws.services.schemaregistry.serializers.GlueSchemaRegistryKafkaSerializer
+# key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+# value.deserializer=com.amazonaws.services.schemaregistry.deserializers.GlueSchemaRegistryKafkaDeserializer
+

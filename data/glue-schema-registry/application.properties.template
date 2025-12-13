@@ -1,0 +1,33 @@
+# AWS Glue Schema Registry Configuration
+# Copy this file to application.properties and update with your values
+
+# MSK Configuration
+bootstrap.servers=boot-xxxxxx.yy.kafka-serverless.us-east-1.amazonaws.com:9098
+
+# AWS Region (will be converted to AWS_REGION internally)
+aws.region=us-east-1
+
+# Glue Schema Registry Configuration
+registry.name=PaymentSchemaRegistry
+schema.name=payment-schema
+data.format=AVRO
+schema.auto.registration.enabled=true
+compatibility=BACKWARD
+
+# Consumer-specific (for AvroConsumer)
+consumer.group.id=payment-consumer-group
+# Use GENERIC_RECORD for backward compatibility - allows reading messages with different schema versions
+avro.record.type=GENERIC_RECORD
+
+# MSK IAM Authentication
+security.protocol=SASL_SSL
+sasl.mechanism=AWS_MSK_IAM
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
+sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
+
+# Kafka Serializers/Deserializers (set automatically if not specified)
+# key.serializer=org.apache.kafka.common.serialization.StringSerializer
+# value.serializer=com.amazonaws.services.schemaregistry.serializers.GlueSchemaRegistryKafkaSerializer
+# key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+# value.deserializer=com.amazonaws.services.schemaregistry.deserializers.GlueSchemaRegistryKafkaDeserializer
+

@@ -1,0 +1,291 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS Glue Schema Registry Testbed Infrastructure'
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: glue-schema-registry-test-cluster
+    Description: The name of the MSK Serverless cluster
+
+Resources:
+  # ============================================
+  # VPC and Networking Resources
+  # ============================================
+  
+  TestVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: GlueSchemaRegistryTestVPC
+
+  TestInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: GlueSchemaRegistryTestIGW
+
+  TestIGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref TestInternetGateway
+      VpcId: !Ref TestVPC
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TestVPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: GlueSchemaRegistryPublicSubnet1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TestVPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: GlueSchemaRegistryPublicSubnet2
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TestVPC
+      Tags:
+        - Key: Name
+          Value: GlueSchemaRegistryPublicRouteTable
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: TestIGWAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref TestInternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # ============================================
+  # Security Groups
+  # ============================================
+  
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EC2 test instance
+      VpcId: !Ref TestVPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic for package installation and Kafka communication
+      Tags:
+        - Key: Name
+          Value: GlueSchemaRegistryEC2SG
+
+  MSKSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for MSK Serverless cluster
+      VpcId: !Ref TestVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 9098
+          ToPort: 9098
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+          Description: Allow TLS traffic from EC2 instance
+        - IpProtocol: tcp
+          FromPort: 9096
+          ToPort: 9096
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+          Description: Allow plaintext traffic from EC2 instance
+      Tags:
+        - Key: Name
+          Value: GlueSchemaRegistryMSKSG
+
+  # ============================================
+  # Glue Schema Registry
+  # ============================================
+  
+  PaymentSchemaRegistry:
+    Type: AWS::Glue::Registry
+    Properties:
+      Name: PaymentSchemaRegistry
+      Description: Schema registry for payment events (AVRO and JSON Schema)
+
+  # ============================================
+  # IAM Resources
+  # ============================================
+  
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    DependsOn: MSKServerlessCluster
+    Properties:
+      RoleName: GlueSchemaRegistryEC2InstanceRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: AWSMSKServerlessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kafka-cluster:Connect
+                  - kafka-cluster:DescribeCluster
+                Resource: !Ref MSKServerlessCluster
+              - Effect: Allow
+                Action:
+                  - kafka-cluster:CreateTopic
+                  - kafka-cluster:DescribeTopic
+                  - kafka-cluster:AlterTopic
+                  - kafka-cluster:DeleteTopic
+                  - kafka-cluster:WriteData
+                  - kafka-cluster:ReadData
+                Resource: !Sub "arn:aws:kafka:${AWS::Region}:${AWS::AccountId}:topic/${ClusterName}/*"
+              - Effect: Allow
+                Action:
+                  - kafka-cluster:AlterGroup
+                  - kafka-cluster:DescribeGroup
+                Resource: !Sub "arn:aws:kafka:${AWS::Region}:${AWS::AccountId}:group/${ClusterName}/*"
+        - PolicyName: GlueSchemaRegistryPermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - glue:RegisterSchemaVersion
+                  - glue:CreateSchema
+                  - glue:GetSchemaVersion
+                  - glue:GetSchema
+                  - glue:GetSchemaByDefinition
+                  - glue:ListSchemaVersions
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: GlueSchemaRegistryEC2InstanceRole
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: GlueSchemaRegistryEC2InstanceProfile
+      Roles:
+        - !Ref EC2InstanceRole
+
+  # ============================================
+  # MSK Serverless Cluster
+  # ============================================
+  
+  MSKServerlessCluster:
+    Type: AWS::MSK::ServerlessCluster
+    Properties:
+      ClusterName: !Ref ClusterName
+      VpcConfigs:
+        - SubnetIds:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+          SecurityGroups:
+            - !Ref MSKSecurityGroup
+      ClientAuthentication:
+        Sasl:
+          Iam:
+            Enabled: true
+      Tags:
+        Name: GlueSchemaRegistryMSKCluster
+
+  # ============================================
+  # EC2 Instance
+  # ============================================
+  
+  TestEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64}}'
+      InstanceType: t3.micro
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      SubnetId: !Ref PublicSubnet1
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          
+          # Update system
+          sudo dnf update -y
+          
+          # Install Java 11 (Amazon Corretto)
+          sudo dnf install -y java-11-amazon-corretto-devel
+          
+          # Verify Java
+          java -version
+          
+          # Install Git
+          sudo dnf install -y git
+          
+          # Install SDKMAN for ec2-user (UserData runs as root, so we need to switch user)
+          sudo -u ec2-user bash -c 'curl -s "https://get.sdkman.io" | bash'
+          
+          # Install Gradle via SDKMAN as ec2-user
+          sudo -u ec2-user bash -c 'source "$HOME/.sdkman/bin/sdkman-init.sh" && sdk install gradle 8.5 -y'
+          
+          # Verify Gradle installation as ec2-user
+          sudo -u ec2-user bash -c 'source "$HOME/.sdkman/bin/sdkman-init.sh" && gradle -v'
+          
+          # Log completion
+          echo "UserData script completed successfully" >> /var/log/user-data.log
+      Tags:
+        - Key: Name
+          Value: GlueSchemaRegistryTestInstance
+
+Outputs:
+  MSKClusterArn:
+    Description: MSK Serverless cluster ARN (use this to get bootstrap servers via AWS CLI)
+    Value: !GetAtt MSKServerlessCluster.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-MSKClusterArn'
+
+  EC2InstanceId:
+    Description: EC2 instance ID for connecting via SSM
+    Value: !Ref TestEC2Instance
+    Export:
+      Name: !Sub '${AWS::StackName}-EC2InstanceId'
+
+  GlueRegistryName:
+    Description: Name of the Glue Schema Registry
+    Value: !Ref PaymentSchemaRegistry
+    Export:
+      Name: !Sub '${AWS::StackName}-GlueRegistryName'
+
+  VPCId:
+    Description: VPC ID for reference
+    Value: !Ref TestVPC
+    Export:
+      Name: !Sub '${AWS::StackName}-VPCId'
+

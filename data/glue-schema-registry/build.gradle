@@ -1,0 +1,35 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.github.davidmc24.gradle.plugin.avro' version '1.7.1'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.apache.kafka:kafka-clients:3.5.1' // Includes AdminClient API for topic creation
+    implementation 'software.amazon.glue:schema-registry-serde:1.1.15'
+    implementation 'org.apache.avro:avro:1.11.3'
+    implementation 'software.amazon.msk:aws-msk-iam-auth:1.1.9'
+    implementation 'org.slf4j:slf4j-simple:1.7.36'
+    // Jackson for JSON Schema POJO serialization/deserialization
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+}
+
+// Shadow JAR configuration
+shadowJar {
+    archiveBaseName = 'glue-schema-registry-testbed'
+    archiveClassifier = 'all'
+    mergeServiceFiles()
+    // Set a default main class (can be overridden at runtime)
+    mainClassName = 'com.example.AvroProducer'
+}
+
