@@ -21,7 +21,13 @@ Implement least-privilege IAM setup using users, groups, and managed policies in
 - Differentiate IAM users, roles, and policies for exam scenarios.
 
 ## Solution
-_Add your implementation notes, console steps, and any CLI/SDK commands here._
 
+### Web Console
+
+_Add your implementation notes, console steps etc here._
+
+### CloudFormation
+
+_Add CFN link and any CLI/SDK commands here._
 
 

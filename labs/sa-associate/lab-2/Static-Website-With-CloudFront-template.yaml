@@ -1,0 +1,113 @@
+---
+Metadata:
+  AWSToolsMetrics:
+    IaC_Generator: "arn:aws:cloudformation:eu-west-2:793976186123:generatedTemplate/fde21d68-7e3c-4418-98e9-776b9b1e4da3"
+Resources:
+  CloudFrontDistribution:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::CloudFront::Distribution"
+    DeletionPolicy: "Retain"
+    Properties:
+      DistributionConfig:
+        Logging:
+          IncludeCookies: false
+          Bucket: ""
+          Prefix: ""
+        Comment: "CF Distribution for static website"
+        DefaultRootObject: ""
+        Origins:
+        - ConnectionTimeout: 10
+          OriginAccessControlId: "E31Z3AAIVT0VCT"
+          ConnectionAttempts: 3
+          OriginCustomHeaders: []
+          DomainName:
+            Fn::GetAtt:
+            - "S3BucketEdosecurestaticwebsitelab2"
+            - "RegionalDomainName"
+          OriginShield:
+            Enabled: false
+          S3OriginConfig:
+            OriginReadTimeout: 30
+            OriginAccessIdentity: ""
+          OriginPath: ""
+          Id: "edo-secure-static-website-lab2.s3.eu-west-2.amazonaws.com-mj5o0ph3u86"
+        ViewerCertificate:
+          MinimumProtocolVersion: "TLSv1"
+          SslSupportMethod: "vip"
+          CloudFrontDefaultCertificate: true
+        PriceClass: "PriceClass_All"
+        DefaultCacheBehavior:
+          Compress: true
+          FunctionAssociations: []
+          LambdaFunctionAssociations: []
+          TargetOriginId: "edo-secure-static-website-lab2.s3.eu-west-2.amazonaws.com-mj5o0ph3u86"
+          ViewerProtocolPolicy: "redirect-to-https"
+          GrpcConfig:
+            Enabled: false
+          TrustedSigners: []
+          FieldLevelEncryptionId: ""
+          TrustedKeyGroups: []
+          AllowedMethods:
+          - "HEAD"
+          - "GET"
+          CachedMethods:
+          - "HEAD"
+          - "GET"
+          SmoothStreaming: false
+          CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6"
+        Staging: false
+        CustomErrorResponses: []
+        ContinuousDeploymentPolicyId: ""
+        OriginGroups:
+          Quantity: 0
+          Items: []
+        Enabled: false
+        Aliases: []
+        IPV6Enabled: true
+        WebACLId: "arn:aws:wafv2:us-east-1:793976186123:global/webacl/CreatedByCloudFront-50de48c2/877fb1c0-8c35-48f5-b079-c424bfb609ec"
+        HttpVersion: "http2"
+        Restrictions:
+          GeoRestriction:
+            Locations: []
+            RestrictionType: "none"
+        CacheBehaviors: []
+  S3BucketEdosecurestaticwebsitelab2:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::S3::Bucket"
+    DeletionPolicy: "Retain"
+    Properties:
+      AbacStatus: "Disabled"
+      PublicAccessBlockConfiguration:
+        RestrictPublicBuckets: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        BlockPublicAcls: true
+      BucketName: "edo-secure-static-website-lab2"
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: "BucketOwnerEnforced"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - BucketKeyEnabled: true
+          ServerSideEncryptionByDefault:
+            SSEAlgorithm: "AES256"
+  S3BucketPolicyEdosecurestaticwebsitelab2:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::S3::BucketPolicy"
+    DeletionPolicy: "Retain"
+    Properties:
+      Bucket:
+        Ref: "S3BucketEdosecurestaticwebsitelab2"
+      PolicyDocument:
+        Version: "2008-10-17"
+        Statement:
+        - Condition:
+            ArnLike:
+              AWS:SourceArn: "arn:aws:cloudfront::793976186123:distribution/EC9LPZN8NUMR3"
+          Resource: "arn:aws:s3:::edo-secure-static-website-lab2/*"
+          Action: "s3:GetObject"
+          Effect: "Allow"
+          Principal:
+            Service: "cloudfront.amazonaws.com"
+          Sid: "AllowCloudFrontServicePrincipal"
+        Id: "PolicyForCloudFrontPrivateContent"
